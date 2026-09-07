@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 216 33% 97%;
+    --foreground: 215 28% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 146 93% 35%;
+    --primary-dark: 146 94% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 60% 19%;
+    --secondary-light: 207 59% 35%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 216 20% 94%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 218 20% 68%;
+    --accent-foreground: 215 28% 17%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 216 20% 88%;
+    --input: 216 20% 88%;
+    --ring: 146 93% 35%;
+    --radius: 0.75rem;
+    --chart-1: 146 93% 35%;
+    --chart-2: 214 60% 19%;
+    --chart-3: 207 59% 35%;
+    --chart-4: 218 20% 68%;
+    --chart-5: 220 9% 46%;
+    --sidebar-background: 214 60% 19%;
+    --sidebar-foreground: 216 33% 97%;
+    --sidebar-primary: 146 93% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 207 59% 35%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 214 60% 25%;
+    --sidebar-ring: 146 93% 35%;
+    --warning: 45 93% 47%;
+    --warning-foreground: 0 0% 100%;
+    --approved: 255 55% 55%;
+    --approved-foreground: 0 0% 100%;
+    --font-sans: var(--font-geist-sans);
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-dark: 146 94% 25%;
+    --primary-foreground: 240 9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-light: 207 59% 45%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 240 5.9% 10%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+    --warning: 45 93% 55%;
+    --warning-foreground: 0 0% 100%;
+    --approved: 255 55% 65%;
+    --approved-foreground: 0 0% 100%;
+    --font-sans: var(--font-geist-sans);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .app-page {
+    @apply flex-1 space-y-5;
+  }
+
+  .app-hero {
+    @apply overflow-hidden rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .app-hero-inner {
+    @apply grid gap-5 p-6 lg:grid-cols-[1.45fr_0.9fr] lg:p-7;
+  }
+
+  .app-eyebrow {
+    @apply inline-flex rounded-md border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary;
+  }
+
+  .app-title {
+    @apply text-3xl font-semibold tracking-tight text-foreground;
+  }
+
+  .app-subtitle {
+    @apply max-w-2xl text-sm leading-6 text-muted-foreground;
+  }
+
+  .app-surface {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .app-muted-panel {
+    @apply rounded-xl border border-accent bg-accent/70 p-4;
+  }
+
+  .auth-page {
+    @apply flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10;
+  }
+
+  .brand-mark {
+    @apply mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary;
+  }
+}
