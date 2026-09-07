@@ -10,7 +10,7 @@ const verifier = CognitoJwtVerifier.create({
 
 const PUBLIC_ROUTES = ['/auth/login', '/auth/signup', '/auth/confirm', '/auth/mfa'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
