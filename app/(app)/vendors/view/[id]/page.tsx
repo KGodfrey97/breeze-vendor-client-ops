@@ -1,138 +1,87 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import {
-  ArrowLeft,
-  Building2,
-  CircleDollarSign,
-  FileText,
-  Gauge,
-  Pencil,
-  User,
-} from "lucide-react"
 import Link from "next/link"
+
+import { ArrowLeft, Building2, Edit, FileText, Gauge, Tag } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { InfoCard } from "@/components/ui/info-card"
 import { InfoField } from "@/components/ui/info-field"
 import { InfoGrid } from "@/components/ui/info-grid"
 
-type Vendor = {
-  id: string
-  name: string
-  lob: string
-  grade: string
-  tier: string
-  status: string
-
-  primaryContact: string
-  email: string
-
-  annualBudget: number
-  actualSpend: number
-
-  contractStartDate: string
-  contractRenewalDate: string
-  contractStatus: string
-
-  kpiScore: number
-  slaScore: number
-}
-
-const sampleVendors: Record<string, Vendor> = {
-  "1": {
-    id: "1",
-    name: "Acme Billing",
-    lob: "Billing",
-    grade: "A",
-    tier: "Tier 1",
-    status: "Active",
-
-    primaryContact: "Jane Smith",
-    email: "jane@example.com",
-
-    annualBudget: 1200000,
-    actualSpend: 785000,
-
-    contractStartDate: "2026-01-01",
-    contractRenewalDate: "2026-12-31",
-    contractStatus: "Active",
-
-    kpiScore: 94,
-    slaScore: 97,
-  },
-
-  "2": {
-    id: "2",
-    name: "ClearPath RCM",
-    lob: "RCM",
-    grade: "B",
-    tier: "Tier 1",
-    status: "Under Review",
-
-    primaryContact: "Michael Carter",
-    email: "michael@example.com",
-
-    annualBudget: 900000,
-    actualSpend: 935000,
-
-    contractStartDate: "2025-11-15",
-    contractRenewalDate: "2026-11-15",
-    contractStatus: "Active",
-
-    kpiScore: 87,
-    slaScore: 91,
-  },
-
-  "3": {
-    id: "3",
-    name: "SecureTech",
-    lob: "Cyber Security",
-    grade: "A",
-    tier: "Tier 2",
-    status: "Active",
-
-    primaryContact: "Sarah Johnson",
-    email: "sarah@example.com",
-
-    annualBudget: 450000,
-    actualSpend: 280000,
-
-    contractStartDate: "2026-03-01",
-    contractRenewalDate: "2027-03-01",
-    contractStatus: "Active",
-
-    kpiScore: 96,
-    slaScore: 99,
-  },
-}
+import {
+  useVendor,
+} from "@/hooks/use-vendors"
 
 export default function VendorDetailsPage() {
   const params = useParams()
 
-  const vendorId = Array.isArray(params.id)
-    ? params.id[0]
-    : params.id
+  const vendorId =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id
 
-  const vendor = sampleVendors[vendorId]
+  const {
+    vendor,
+    isLoading,
+    error,
+    refetch,
+  } = useVendor(vendorId)
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(amount)
+  const formatStatus = (
+    value: string | null
+  ) => {
+    if (!value) return "—"
 
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
+    return value
+      .split("_")
+      .map(
+        (word) =>
+          word
+            .charAt(0)
+            .toUpperCase() +
+          word.slice(1)
+      )
+      .join(" ")
+  }
 
-  if (!vendor) {
+  const formatDate = (
+    dateString: string | null
+  ) => {
+    if (!dateString) return "—"
+
+    return new Date(
+      dateString
+    ).toLocaleDateString(
+      "en-US",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }
+    )
+  }
+
+  if (isLoading) {
     return (
-      <div className="container mx-auto p-3">
+      <div className="container mx-auto p-6">
+        <div className="flex h-64 items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+
+            <p className="text-muted-foreground">
+              Loading vendor details...
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !vendor) {
+    return (
+      <div className="container mx-auto p-6">
         <div className="flex h-64 items-center justify-center">
           <div className="text-center">
             <Building2 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
@@ -142,8 +91,8 @@ export default function VendorDetailsPage() {
             </h2>
 
             <p className="mb-4 text-muted-foreground">
-              The vendor you're looking for could not
-              be found.
+              {error ||
+                "The vendor you're looking for doesn't exist or you don't have permission to view it."}
             </p>
 
             <Button asChild>
@@ -158,199 +107,264 @@ export default function VendorDetailsPage() {
     )
   }
 
-  const budgetRemaining =
-    vendor.annualBudget - vendor.actualSpend
-
-  const budgetStatus =
-    budgetRemaining < 0
-      ? "Over Budget"
-      : "In Budget"
-
   return (
-    <div className="container mx-auto p-3">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
+    <div className="relative min-h-full overflow-hidden">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-80"
+        style={{
+          background: `
+            radial-gradient(
+              ellipse at top center,
+              ${vendor.color || "#64748b"}33 0%,
+              ${vendor.color || "#64748b"}1a 35%,
+              transparent 75%
+            )
+          `,
+        }}
+      />
 
-          {/* Left side */}
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" asChild>
-              <Link href="/vendors">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                All Vendors
-              </Link>
-            </Button>
+      <div className="relative container mx-auto p-3">
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
 
-            <div>
-              <h1 className="text-3xl font-bold">
-                {vendor.name}
-              </h1>
+            {/* Left side */}
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                asChild
+              >
+                <Link href="/vendors">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  All Vendors
+                </Link>
+              </Button>
 
-              <p className="text-muted-foreground">
-                {vendor.lob} • {vendor.tier}
-              </p>
+              <div className="flex items-center gap-3">
+
+                <div>
+                  <h1 className="text-3xl font-bold">
+                    {vendor.name}
+                  </h1>
+
+                  <p className="text-muted-foreground">
+                    {vendor.line_of_business ||
+                      "No Line of Business"}
+
+                    {vendor.vendor_tier
+                      ? ` • ${vendor.vendor_tier}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline">
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
+            {/* Right side */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Edit modal comes next
+                }}
+              >
+                <Edit className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
 
-            <div className="rounded-lg border px-4 py-2">
-              <p className="text-xs text-muted-foreground">
-                Grade
-              </p>
+              <div className="rounded-xl border border-border bg-card px-3 py-2 text-sm">
+                <span className="text-muted-foreground">
+                  Status:
+                </span>{" "}
+                <span className="font-medium">
+                  {formatStatus(
+                    vendor.status
+                  )}
+                </span>
+              </div>
 
-              <p className="text-lg font-bold">
-                {vendor.grade}
-              </p>
+              <div className="rounded-xl border border-border bg-card px-3 py-2 text-sm">
+                <span className="text-muted-foreground">
+                  Grade:
+                </span>{" "}
+                <span className="font-semibold">
+                  {vendor.grade ||
+                    "Not Graded"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-        {/* Main Content */}
-        <div className="space-y-6 lg:col-span-2">
+          {/* Main column */}
+          <div className="space-y-6 lg:col-span-2">
 
-          <InfoCard
-            title="Vendor Information"
-            icon={Building2}
-          >
-            <InfoGrid>
-              <InfoField
-                label="Vendor Name"
-                value={vendor.name}
-              />
+            {/* Vendor Information */}
+            <InfoCard
+              title="Vendor Information"
+              icon={Building2}
+            >
+              <InfoGrid>
+                <InfoField
+                  label="Vendor Name"
+                  value={vendor.name}
+                />
 
-              <InfoField
-                label="Line of Business"
-                value={vendor.lob}
-              />
+                <InfoField
+                  label="Vendor Code"
+                  value={
+                    vendor.vendor_code
+                  }
+                />
 
-              <InfoField
-                label="Vendor Tier"
-                value={vendor.tier}
-              />
+                <InfoField
+                  label="Line of Business"
+                  value={
+                    vendor.line_of_business
+                  }
+                />
 
-              <InfoField
-                label="Status"
-                value={vendor.status}
-              />
-            </InfoGrid>
-          </InfoCard>
+                <InfoField
+                  label="Vendor Tier"
+                  value={
+                    vendor.vendor_tier
+                  }
+                />
 
-          <InfoCard
-            title="Primary Contact"
-            icon={User}
-          >
-            <InfoGrid>
-              <InfoField
-                label="Contact Name"
-                value={vendor.primaryContact}
-              />
+                <InfoField
+                  label="Status"
+                  value={formatStatus(
+                    vendor.status
+                  )}
+                />
 
-              <InfoField
-                label="Email"
-                value={vendor.email}
-              />
-            </InfoGrid>
-          </InfoCard>
+                <InfoField
+                  label="Grade"
+                  value={
+                    vendor.grade ||
+                    "Not Graded"
+                  }
+                />
+              </InfoGrid>
+            </InfoCard>
 
-          <InfoCard
-            title="Contract"
-            icon={FileText}
-          >
-            <InfoGrid>
-              <InfoField
-                label="Contract Status"
-                value={vendor.contractStatus}
-              />
+            {/* Vendor Description */}
+            <InfoCard
+              title="Vendor Description"
+              icon={FileText}
+            >
+              <InfoGrid>
+                <InfoField
+                  label="Description"
+                  value={
+                    vendor.description
+                  }
+                  colSpan={2}
+                />
 
-              <InfoField
-                label="Start Date"
-                value={formatDate(
-                  vendor.contractStartDate
-                )}
-              />
+                <InfoField
+                  label="Internal Notes"
+                  value={
+                    vendor.notes
+                  }
+                  colSpan={2}
+                />
+              </InfoGrid>
+            </InfoCard>
 
-              <InfoField
-                label="Renewal Date"
-                value={formatDate(
-                  vendor.contractRenewalDate
-                )}
-              />
+            {/* Relationship */}
+            <InfoCard
+              title="Relationship"
+              icon={Tag}
+            >
+              <InfoGrid>
+                <InfoField
+                  label="Created"
+                  value={formatDate(
+                    vendor.created_at
+                  )}
+                />
 
-              <InfoField
-                label="Annual Value"
-                value={formatCurrency(
-                  vendor.annualBudget
-                )}
-              />
-            </InfoGrid>
-          </InfoCard>
-        </div>
+                <InfoField
+                  label="Last Updated"
+                  value={formatDate(
+                    vendor.updated_at
+                  )}
+                />
 
-        {/* Sidebar */}
-        <div className="space-y-6">
+                <InfoField
+                  label="Next Renewal"
+                  value={formatDate(
+                    vendor.renewal_date
+                  )}
+                />
+              </InfoGrid>
+            </InfoCard>
 
-          <InfoCard
-            title="Budget"
-            icon={CircleDollarSign}
-          >
-            <InfoGrid>
-              <InfoField
-                label="Annual Budget"
-                value={formatCurrency(
-                  vendor.annualBudget
-                )}
-              />
+          </div>
 
-              <InfoField
-                label="Actual Spend"
-                value={formatCurrency(
-                  vendor.actualSpend
-                )}
-              />
+          {/* Right sidebar */}
+          <div className="space-y-6">
 
-              <InfoField
-                label="Remaining"
-                value={formatCurrency(
-                  budgetRemaining
-                )}
-              />
+            {/* Status / Health */}
+            <InfoCard
+              title="Vendor Health"
+              icon={Gauge}
+            >
+              <InfoGrid>
+                <InfoField
+                  label="Status"
+                  value={formatStatus(
+                    vendor.status
+                  )}
+                />
 
-              <InfoField
-                label="Budget Status"
-                value={budgetStatus}
-              />
-            </InfoGrid>
-          </InfoCard>
+                <InfoField
+                  label="Grade"
+                  value={
+                    vendor.grade ||
+                    "Not Graded"
+                  }
+                />
 
-          <InfoCard
-            title="Performance"
-            icon={Gauge}
-          >
-            <InfoGrid>
-              <InfoField
-                label="Vendor Grade"
-                value={vendor.grade}
-              />
+                <InfoField
+                  label="Renewal"
+                  value={formatDate(
+                    vendor.renewal_date
+                  )}
+                />
+              </InfoGrid>
+            </InfoCard>
 
-              <InfoField
-                label="KPI Score"
-                value={`${vendor.kpiScore}%`}
-              />
+            {/* Future modules */}
+            <InfoCard
+              title="Coming Next"
+              icon={FileText}
+            >
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Contracts
+                </p>
 
-              <InfoField
-                label="SLA Score"
-                value={`${vendor.slaScore}%`}
-              />
-            </InfoGrid>
-          </InfoCard>
+                <p>
+                  Budget
+                </p>
+
+                <p>
+                  KPI / SLA performance
+                </p>
+
+                <p>
+                  Meetings
+                </p>
+
+                <p>
+                  Vendor notes
+                </p>
+              </div>
+            </InfoCard>
+
+          </div>
         </div>
       </div>
     </div>

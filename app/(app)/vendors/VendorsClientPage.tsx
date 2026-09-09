@@ -1,154 +1,309 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
-
+import { useEffect, useMemo, useState, useTransition } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Loader2, Plus, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-
-type VendorStatus =
-  | "active"
-  | "onboarding"
-  | "under_review"
-  | "inactive"
-
-type BudgetStatus =
-  | "in_budget"
-  | "at_risk"
-  | "over_budget"
-
-type Vendor = {
-  id: string
-  name: string
-  lob: string
-  grade: string
-  tier: string
-  budgetStatus: BudgetStatus
-  contractRenewalDate: string
-  status: VendorStatus
-  color: string
-}
-
-const sampleVendors: Vendor[] = [
-  {
-    id: "1",
-    name: "Acme Billing",
-    lob: "Billing",
-    grade: "A",
-    tier: "Tier 1",
-    budgetStatus: "in_budget",
-    contractRenewalDate: "2026-12-31",
-    status: "active",
-    color: "#3B82F6",
-  },
-  {
-    id: "2",
-    name: "ClearPath RCM",
-    lob: "RCM",
-    grade: "B",
-    tier: "Tier 1",
-    budgetStatus: "over_budget",
-    contractRenewalDate: "2026-11-15",
-    status: "under_review",
-    color: "#8B5CF6",
-  },
-  {
-    id: "3",
-    name: "SecureTech",
-    lob: "Cyber Security",
-    grade: "A",
-    tier: "Tier 2",
-    budgetStatus: "in_budget",
-    contractRenewalDate: "2027-03-01",
-    status: "active",
-    color: "#14B8A6",
-  },
-]
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { VendorsTable } from "@/components/vendors-table"
+import { VendorsFilter } from "@/components/vendors-filter"
+import { useVendors, type VendorListItem } from "@/hooks/use-vendors"
+import { useVendorsTableColumns } from "@/hooks/use-vendors-table-columns"
 
 export function VendorsClientPage() {
   const router = useRouter()
-  const [status, setStatus] = useState("all")
+  const searchParams = useSearchParams()
 
-  const filteredVendors =
-    status === "all"
-      ? sampleVendors
-      : sampleVendors.filter((vendor) => vendor.status === status)
+  const [isPending, startTransition] =
+    useTransition()
 
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
+  // ----------------------------------------------------
+  // Read filters from URL
+  // ----------------------------------------------------
 
-  const formatStatus = (value: string) =>
-    value
-      .split("_")
-      .map(
-        (word) =>
-          word.charAt(0).toUpperCase() + word.slice(1)
-      )
-      .join(" ")
+  const status = searchParams.get("status") || "all"
+  const search = searchParams.get("search") || undefined
+  const lineOfBusinessId = searchParams.get("lob") || undefined
+  const vendorTier = searchParams.get("tier") || undefined
+  const grade = searchParams.get("grade") || undefined
 
-  const getBudgetLabel = (status: BudgetStatus) => {
-    switch (status) {
-      case "in_budget":
-        return "In Budget"
-      case "at_risk":
-        return "At Risk"
-      case "over_budget":
-        return "Over Budget"
+  // ----------------------------------------------------
+  // Table state
+  // ----------------------------------------------------
+
+  const [currentPage, setCurrentPage] = useState(1)
+  const [allVendors, setAllVendors] = useState<VendorListItem[]>([])
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined)
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
+  const [
+    pendingNavigationLabel,
+    setPendingNavigationLabel,
+  ] = useState<string | null>(null)
+
+  // ----------------------------------------------------
+  // Reset results when filters change
+  // ----------------------------------------------------
+
+  const filterKey = useMemo(
+    () =>
+      JSON.stringify({
+        status,
+        search,
+        lineOfBusinessId,
+        vendorTier,
+        grade,
+      }),
+    [
+      status,
+      search,
+      lineOfBusinessId,
+      vendorTier,
+      grade,
+    ]
+  )
+
+  // ----------------------------------------------------
+  // Load vendors
+  // ----------------------------------------------------
+
+  const {
+    vendors,
+    count,
+    linesOfBusiness,
+    isLoading,
+    error,
+  } = useVendors({
+    status,
+    search,
+    lineOfBusinessId,
+    vendorTier,
+    grade,
+    page: currentPage,
+    pageSize: 20,
+    sortBy,
+    sortOrder,
+  })
+
+  // ----------------------------------------------------
+  // Column configuration
+  // ----------------------------------------------------
+
+  const {
+    columns,
+    setColumns,
+    toggleColumnVisibility,
+  } = useVendorsTableColumns()
+
+  const visibleColumns = columns.filter(
+    (column) => column.visible
+  )
+
+  // ----------------------------------------------------
+  // Reset pagination when filters change
+  // ----------------------------------------------------
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setAllVendors([])
+  }, [filterKey])
+
+  // ----------------------------------------------------
+  // Clear navigation loading label
+  // ----------------------------------------------------
+
+  useEffect(() => {
+    if (!isPending) {
+      setPendingNavigationLabel(null)
     }
+  }, [isPending])
+
+  // ----------------------------------------------------
+  // Combine pages when Load More is used
+  // ----------------------------------------------------
+
+  useEffect(() => {
+    if (currentPage === 1) {
+      setAllVendors(vendors)
+      return
+    }
+
+    setAllVendors((previous) => {
+      const existingIds = new Set(
+        previous.map((vendor) => vendor.id)
+      )
+
+      const nextVendors = vendors.filter(
+        (vendor) =>
+          !existingIds.has(vendor.id)
+      )
+
+      return [
+        ...previous,
+        ...nextVendors,
+      ]
+    })
+  }, [vendors, currentPage])
+
+  // ----------------------------------------------------
+  // Status tabs
+  // ----------------------------------------------------
+
+  const handleTabChange = (
+    value: string
+  ) => {
+    const params = new URLSearchParams(
+      searchParams.toString()
+    )
+
+    if (value === "all") {
+      params.delete("status")
+    } else {
+      params.set("status", value)
+    }
+
+    params.delete("page")
+
+    setPendingNavigationLabel(
+      "Loading vendors..."
+    )
+
+    startTransition(() => {
+      const query = params.toString()
+
+      router.push(
+        query
+          ? `/vendors?${query}`
+          : "/vendors"
+      )
+    })
+  }
+
+  // ----------------------------------------------------
+  // Pagination
+  // ----------------------------------------------------
+
+  const handleLoadMore = () => {
+    if (
+      !isLoading &&
+      allVendors.length < count
+    ) {
+      setCurrentPage(
+        (previous) => previous + 1
+      )
+    }
+  }
+
+  // ----------------------------------------------------
+  // Sorting
+  //
+  // Cycle:
+  // ASC -> DESC -> none
+  // ----------------------------------------------------
+
+  const handleSortChange = (
+    nextSortBy: string
+  ) => {
+    setCurrentPage(1)
+    setAllVendors([])
+
+    if (sortBy === nextSortBy) {
+      if (sortOrder === "asc") {
+        setSortOrder("desc")
+      } else {
+        setSortBy(undefined)
+        setSortOrder("asc")
+      }
+
+      return
+    }
+
+    setSortBy(nextSortBy)
+    setSortOrder("asc")
+  }
+
+  // ----------------------------------------------------
+  // New vendor navigation
+  // ----------------------------------------------------
+
+  const handleNavigateToNewVendor = () => {
+    setPendingNavigationLabel(
+      "Opening new vendor form..."
+    )
+
+    startTransition(() => {
+      router.push("/vendors/new")
+    })
   }
 
   return (
     <div className="app-page">
+
+      {/* Navigation Loading */}
+
+      {isPending &&
+      pendingNavigationLabel ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+
+          <span>
+            {pendingNavigationLabel}
+          </span>
+        </div>
+      ) : null}
+
       <Card className="app-surface">
         <CardContent className="pt-6">
+
           <div className="flex flex-col gap-4">
 
-            {/* Top Row */}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold">
-                  Vendors
-                </h1>
+            {/* ----------------------------------------
+                Top Row
+            ----------------------------------------- */}
 
-                <p className="text-sm text-muted-foreground">
-                  Manage vendor relationships, contracts,
-                  performance, and operational risk.
-                </p>
-              </div>
+            <div className="flex items-center gap-4">
+
+              <VendorsFilter
+                linesOfBusiness={
+                  linesOfBusiness
+                }
+                className="min-w-0 flex-1"
+              />
 
               <Button
-                onClick={() => router.push("/vendors/new")}
+                onClick={
+                  handleNavigateToNewVendor
+                }
+                disabled={isPending}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                {isPending &&
+                pendingNavigationLabel ===
+                  "Opening new vendor form..." ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+
                 New Vendor
               </Button>
+
             </div>
+
+            {/* ----------------------------------------
+                Tabs
+            ----------------------------------------- */}
 
             <Tabs
               value={status}
-              onValueChange={setStatus}
+              onValueChange={
+                handleTabChange
+              }
               className="space-y-4"
             >
+
               <div className="flex w-full items-center justify-between">
+
                 <TabsList>
                   <TabsTrigger value="all">
                     All Vendors
@@ -170,125 +325,176 @@ export function VendorsClientPage() {
                     Inactive
                   </TabsTrigger>
                 </TabsList>
+
+                {/* ----------------------------------
+                    Column Visibility
+                ----------------------------------- */}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    asChild
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-border bg-card"
+                    >
+                      <Settings2 className="mr-2 h-4 w-4" />
+
+                      Columns (
+                        {visibleColumns.length}/
+                        {columns.length}
+                      )
+                    </Button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-48"
+                  >
+                    {columns
+                      .filter(
+                        (column) =>
+                          column.id !==
+                          "actions"
+                      )
+                      .map((column) => (
+                        <DropdownMenuCheckboxItem
+                          key={
+                            column.id
+                          }
+                          checked={
+                            column.visible
+                          }
+                          onCheckedChange={() =>
+                            toggleColumnVisibility(
+                              column.id
+                            )
+                          }
+                        >
+                          {column.label}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
               </div>
 
+              {/* --------------------------------------
+                  Table Content
+              --------------------------------------- */}
+
               <TabsContent value={status}>
-                {filteredVendors.length === 0 ? (
+
+                {isLoading &&
+                allVendors.length === 0 ? (
+
+                  <div className="animate-pulse space-y-2">
+                    {[...Array(5)].map(
+                      (_, index) => (
+                        <div
+                          key={index}
+                          className="h-10 rounded bg-muted"
+                        />
+                      )
+                    )}
+                  </div>
+
+                ) : error ? (
+
+                  <div className="py-4 text-center text-destructive">
+
+                    <p>
+                      Error loading vendors:{" "}
+                      {error}
+                    </p>
+
+                    <Button
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() =>
+                        router.refresh()
+                      }
+                    >
+                      Retry
+                    </Button>
+
+                  </div>
+
+                ) : allVendors.length === 0 ? (
+
                   <div className="py-8 text-center text-muted-foreground">
+
                     <p className="mb-2 text-lg">
                       No vendors found
                     </p>
 
                     <p className="mb-4 text-sm">
-                      There are no vendors with this status.
+                      Try adjusting your filters
+                      or creating a new vendor.
                     </p>
 
                     <Button
-                      onClick={() =>
-                        router.push("/vendors/new")
+                      onClick={
+                        handleNavigateToNewVendor
                       }
+                      disabled={isPending}
                     >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Vendor
+                      {isPending &&
+                      pendingNavigationLabel ===
+                        "Opening new vendor form..." ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="mr-2 h-4 w-4" />
+                      )}
+
+                      Create New Vendor
                     </Button>
+
                   </div>
+
                 ) : (
-                  <div className="overflow-hidden rounded-lg border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>LOB</TableHead>
-                          <TableHead>Grade</TableHead>
-                          <TableHead>Tier</TableHead>
-                          <TableHead>Budget</TableHead>
-                          <TableHead>
-                            Contract Renewal
-                          </TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
 
-                      <TableBody>
-                        {filteredVendors.map((vendor) => (
-                          <TableRow
-                            key={vendor.id}
-                            className="cursor-pointer"
-                            onClick={() =>
-                              router.push(
-                                `/vendors/${vendor.id}`
-                              )
-                            }
-                          >
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="h-3 w-3 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      vendor.color,
-                                  }}
-                                />
+                  <VendorsTable
+                    vendors={
+                      allVendors
+                    }
+                    totalCount={
+                      count
+                    }
+                    hasMore={
+                      allVendors.length <
+                      count
+                    }
+                    isLoadingMore={
+                      isLoading &&
+                      currentPage > 1
+                    }
+                    onLoadMore={
+                      handleLoadMore
+                    }
+                    sortBy={
+                      sortBy
+                    }
+                    sortOrder={
+                      sortOrder
+                    }
+                    onSortChange={
+                      handleSortChange
+                    }
+                    columns={
+                      columns
+                    }
+                    setColumns={
+                      setColumns
+                    }
+                  />
 
-                                <span className="font-medium">
-                                  {vendor.name}
-                                </span>
-                              </div>
-                            </TableCell>
-
-                            <TableCell>
-                              {vendor.lob}
-                            </TableCell>
-
-                            <TableCell>
-                              <span className="font-semibold">
-                                {vendor.grade}
-                              </span>
-                            </TableCell>
-
-                            <TableCell>
-                              {vendor.tier}
-                            </TableCell>
-
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className={`h-2.5 w-2.5 rounded-full ${
-                                    vendor.budgetStatus ===
-                                    "in_budget"
-                                      ? "bg-emerald-500"
-                                      : vendor.budgetStatus ===
-                                        "at_risk"
-                                      ? "bg-amber-500"
-                                      : "bg-red-500"
-                                  }`}
-                                />
-
-                                {getBudgetLabel(
-                                  vendor.budgetStatus
-                                )}
-                              </div>
-                            </TableCell>
-
-                            <TableCell>
-                              {formatDate(
-                                vendor.contractRenewalDate
-                              )}
-                            </TableCell>
-
-                            <TableCell>
-                              {formatStatus(
-                                vendor.status
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
                 )}
+
               </TabsContent>
             </Tabs>
+
           </div>
         </CardContent>
       </Card>
