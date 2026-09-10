@@ -722,7 +722,7 @@ export function VendorsTable({
 
                 startTransition(() => {
                   router.push(
-                    `/vendors/${vendor.id}`
+                    `/vendors/view/${vendor.id}`
                   )
                 })
               }}
