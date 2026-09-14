@@ -32,7 +32,7 @@ const DEFAULT_COLUMNS: Column[] = [
   },
   {
     id: "grade",
-    label: "Grade",
+    label: "Health Grade",
     visible: true,
     sortKey: "grade",
   },

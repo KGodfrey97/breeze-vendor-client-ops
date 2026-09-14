@@ -15,7 +15,7 @@ import type { Database } from "@/lib/db-types"
 import { cn } from "@/lib/utils"
 import { FileText, Pencil, Plus, Trash2, ChevronDown } from "lucide-react"
 import type { ClaimWithPatientAndProfile } from "@/hooks/use-claims"
-import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/constants/insuranceColors"
+import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/lib/constants/insuranceColors"
 
 type ClaimInsurance = Database["public"]["Tables"]["claim_insurance"]["Row"]
 

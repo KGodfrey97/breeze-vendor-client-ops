@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { requireAuthenticatedProfile } from "@/lib/auth-server"
 
+import { recalculateVendorHealth } from "@/lib/vendor-health"
+
 type RouteContext = {
   params: Promise<{
     id: string
@@ -221,6 +223,11 @@ export async function POST(
         notes || null,
         profile.id,
       ]
+    )
+
+    await recalculateVendorHealth(
+      vendorId,
+      profile.organization_id
     )
 
     return NextResponse.json(

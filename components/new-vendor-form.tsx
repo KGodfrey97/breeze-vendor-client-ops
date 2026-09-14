@@ -1,13 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Save } from "lucide-react"
+import {
+  Loader2,
+  Save,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
 import {
   Select,
   SelectContent,
@@ -15,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
 import { Textarea } from "@/components/ui/textarea"
 
 type LineOfBusiness = {
@@ -29,21 +43,12 @@ type VendorStatus =
   | "under_review"
   | "inactive"
 
-type VendorGrade =
-  | ""
-  | "A"
-  | "B"
-  | "C"
-  | "D"
-  | "F"
-
 type FormState = {
   name: string
   vendorCode: string
   lineOfBusinessId: string
   vendorTier: string
   status: VendorStatus
-  grade: VendorGrade
   color: string
   description: string
   notes: string
@@ -55,7 +60,6 @@ const initialForm: FormState = {
   lineOfBusinessId: "",
   vendorTier: "",
   status: "onboarding",
-  grade: "",
   color: "#3B82F6",
   description: "",
   notes: "",
@@ -64,68 +68,104 @@ const initialForm: FormState = {
 export function NewVendorForm() {
   const router = useRouter()
 
-  const [form, setForm] = useState<FormState>(initialForm)
+  const [
+    form,
+    setForm,
+  ] = useState<FormState>(
+    initialForm
+  )
 
-  const [linesOfBusiness, setLinesOfBusiness] =
-    useState<LineOfBusiness[]>([])
+  const [
+    linesOfBusiness,
+    setLinesOfBusiness,
+  ] =
+    useState<LineOfBusiness[]>(
+      []
+    )
 
-  const [isLoadingLobs, setIsLoadingLobs] =
+  const [
+    isLoadingLobs,
+    setIsLoadingLobs,
+  ] =
     useState(true)
 
-  const [isSubmitting, setIsSubmitting] =
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] =
     useState(false)
 
-  const [error, setError] =
-    useState<string | null>(null)
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    )
 
   useEffect(() => {
-    const loadLinesOfBusiness = async () => {
-      try {
-        setIsLoadingLobs(true)
+    const loadLinesOfBusiness =
+      async () => {
+        try {
+          setIsLoadingLobs(
+            true
+          )
 
-        const response = await fetch(
-          "/api/lines-of-business"
-        )
+          const response =
+            await fetch(
+              "/api/lines-of-business",
+              {
+                cache: "no-store",
+              }
+            )
 
-        const data = await response.json()
+          const data =
+            await response.json()
 
-        if (!response.ok) {
-          throw new Error(
-            data.error ||
-              "Failed to load lines of business"
+          if (!response.ok) {
+            throw new Error(
+              data.error ||
+                "Failed to load lines of business"
+            )
+          }
+
+          setLinesOfBusiness(
+            data.linesOfBusiness ||
+              []
+          )
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load lines of business"
+          )
+        } finally {
+          setIsLoadingLobs(
+            false
           )
         }
-
-        setLinesOfBusiness(
-          data.linesOfBusiness || []
-        )
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load lines of business"
-        )
-      } finally {
-        setIsLoadingLobs(false)
       }
-    }
 
     loadLinesOfBusiness()
   }, [])
 
-  const canSubmit = useMemo(() => {
-    return (
-      form.name.trim().length > 0 &&
-      form.lineOfBusinessId.length > 0 &&
-      !isSubmitting &&
-      !isLoadingLobs
-    )
-  }, [
-    form.name,
-    form.lineOfBusinessId,
-    isSubmitting,
-    isLoadingLobs,
-  ])
+  const canSubmit =
+    useMemo(() => {
+      return (
+        form.name
+          .trim()
+          .length > 0 &&
+        form.lineOfBusinessId
+          .length > 0 &&
+        !isSubmitting &&
+        !isLoadingLobs
+      )
+    }, [
+      form.name,
+      form.lineOfBusinessId,
+      isSubmitting,
+      isLoadingLobs,
+    ])
 
   const updateField = <
     K extends keyof FormState
@@ -133,104 +173,133 @@ export function NewVendorForm() {
     field: K,
     value: FormState[K]
   ) => {
-    setForm((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       [field]: value,
     }))
   }
 
-  const handleSubmit = async (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault()
+  const handleSubmit =
+    async (
+      event: React.FormEvent<HTMLFormElement>
+    ) => {
+      event.preventDefault()
 
-    setError(null)
+      setError(null)
 
-    if (!form.name.trim()) {
-      setError("Vendor name is required.")
-      return
-    }
+      if (
+        !form.name.trim()
+      ) {
+        setError(
+          "Vendor name is required."
+        )
 
-    if (!form.lineOfBusinessId) {
-      setError(
-        "Line of business is required."
-      )
-      return
-    }
+        return
+      }
 
-    try {
-      setIsSubmitting(true)
+      if (
+        !form.lineOfBusinessId
+      ) {
+        setError(
+          "Line of business is required."
+        )
 
-      const response = await fetch(
-        "/api/vendors",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            name: form.name.trim(),
+        return
+      }
 
-            vendorCode:
-              form.vendorCode.trim() || null,
+      try {
+        setIsSubmitting(true)
 
-            lineOfBusinessId:
-              form.lineOfBusinessId,
+        const response =
+          await fetch(
+            "/api/vendors",
+            {
+              method: "POST",
 
-            vendorTier:
-              form.vendorTier.trim() || null,
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
 
-            status: form.status,
+              body: JSON.stringify({
+                name:
+                  form.name.trim(),
 
-            grade:
-              form.grade || null,
+                vendorCode:
+                  form.vendorCode
+                    .trim() ||
+                  null,
 
-            color:
-              form.color || null,
+                lineOfBusinessId:
+                  form.lineOfBusinessId,
 
-            description:
-              form.description.trim() || null,
+                vendorTier:
+                  form.vendorTier
+                    .trim() ||
+                  null,
 
-            notes:
-              form.notes.trim() || null,
-          }),
+                status:
+                  form.status,
+
+                color:
+                  form.color ||
+                  null,
+
+                description:
+                  form.description
+                    .trim() ||
+                  null,
+
+                notes:
+                  form.notes
+                    .trim() ||
+                  null,
+              }),
+            }
+          )
+
+        const data =
+          await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "Failed to create vendor"
+          )
         }
-      )
 
-      const data = await response.json()
+        const vendorId =
+          data.vendor?.id
 
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Failed to create vendor"
+        if (!vendorId) {
+          throw new Error(
+            "Vendor was created, but no vendor ID was returned."
+          )
+        }
+
+        router.push(
+          `/vendors/view/${vendorId}`
+        )
+
+        router.refresh()
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Failed to create vendor"
+        )
+      } finally {
+        setIsSubmitting(
+          false
         )
       }
-
-      const vendorId = data.vendor?.id
-
-      if (!vendorId) {
-        throw new Error(
-          "Vendor was created, but no vendor ID was returned."
-        )
-      }
-
-      router.push(`/vendors/${vendorId}`)
-      router.refresh()
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create vendor"
-      )
-    } finally {
-      setIsSubmitting(false)
     }
-  }
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="space-y-6"
     >
       {error ? (
@@ -251,9 +320,11 @@ export function NewVendorForm() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 
             {/* Vendor Name */}
+
             <div className="space-y-2">
               <Label htmlFor="name">
                 Vendor Name
+
                 <span className="ml-1 text-destructive">
                   *
                 </span>
@@ -261,19 +332,27 @@ export function NewVendorForm() {
 
               <Input
                 id="name"
-                value={form.name}
-                onChange={(e) =>
+                value={
+                  form.name
+                }
+                onChange={(
+                  event
+                ) =>
                   updateField(
                     "name",
-                    e.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="Acme Billing"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting
+                }
               />
             </div>
 
             {/* Vendor Code */}
+
             <div className="space-y-2">
               <Label htmlFor="vendorCode">
                 Vendor Code
@@ -281,30 +360,43 @@ export function NewVendorForm() {
 
               <Input
                 id="vendorCode"
-                value={form.vendorCode}
-                onChange={(e) =>
+                value={
+                  form.vendorCode
+                }
+                onChange={(
+                  event
+                ) =>
                   updateField(
                     "vendorCode",
-                    e.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="ACME-001"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting
+                }
               />
             </div>
 
             {/* Line of Business */}
+
             <div className="space-y-2">
               <Label>
                 Line of Business
+
                 <span className="ml-1 text-destructive">
                   *
                 </span>
               </Label>
 
               <Select
-                value={form.lineOfBusinessId}
-                onValueChange={(value) =>
+                value={
+                  form.lineOfBusinessId
+                }
+                onValueChange={(
+                  value
+                ) =>
                   updateField(
                     "lineOfBusinessId",
                     value
@@ -329,10 +421,16 @@ export function NewVendorForm() {
                   {linesOfBusiness.map(
                     (lob) => (
                       <SelectItem
-                        key={lob.id}
-                        value={lob.id}
+                        key={
+                          lob.id
+                        }
+                        value={
+                          lob.id
+                        }
                       >
-                        {lob.name}
+                        {
+                          lob.name
+                        }
                       </SelectItem>
                     )
                   )}
@@ -341,20 +439,27 @@ export function NewVendorForm() {
             </div>
 
             {/* Vendor Tier */}
+
             <div className="space-y-2">
               <Label htmlFor="vendorTier">
                 Vendor Tier
               </Label>
 
               <Select
-                value={form.vendorTier}
-                onValueChange={(value) =>
+                value={
+                  form.vendorTier
+                }
+                onValueChange={(
+                  value
+                ) =>
                   updateField(
                     "vendorTier",
                     value
                   )
                 }
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting
+                }
               >
                 <SelectTrigger id="vendorTier">
                   <SelectValue placeholder="Select tier" />
@@ -377,13 +482,16 @@ export function NewVendorForm() {
             </div>
 
             {/* Status */}
+
             <div className="space-y-2">
               <Label>
                 Status
               </Label>
 
               <Select
-                value={form.status}
+                value={
+                  form.status
+                }
                 onValueChange={(
                   value: VendorStatus
                 ) =>
@@ -392,7 +500,9 @@ export function NewVendorForm() {
                     value
                   )
                 }
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -418,51 +528,8 @@ export function NewVendorForm() {
               </Select>
             </div>
 
-            {/* Grade */}
-            <div className="space-y-2">
-              <Label>
-                Grade
-              </Label>
-
-              <Select
-                value={form.grade}
-                onValueChange={(value) =>
-                  updateField(
-                    "grade",
-                    value as VendorGrade
-                  )
-                }
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Not graded" />
-                </SelectTrigger>
-
-                <SelectContent>
-                  <SelectItem value="A">
-                    A
-                  </SelectItem>
-
-                  <SelectItem value="B">
-                    B
-                  </SelectItem>
-
-                  <SelectItem value="C">
-                    C
-                  </SelectItem>
-
-                  <SelectItem value="D">
-                    D
-                  </SelectItem>
-
-                  <SelectItem value="F">
-                    F
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Vendor Color */}
+
             <div className="space-y-2">
               <Label htmlFor="color">
                 Vendor Color
@@ -472,26 +539,40 @@ export function NewVendorForm() {
                 <Input
                   id="color"
                   type="color"
-                  value={form.color}
-                  onChange={(e) =>
+                  value={
+                    form.color
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     updateField(
                       "color",
-                      e.target.value
+                      event.target
+                        .value
                     )
                   }
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting
+                  }
                   className="h-10 w-16 cursor-pointer p-1"
                 />
 
                 <Input
-                  value={form.color}
-                  onChange={(e) =>
+                  value={
+                    form.color
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     updateField(
                       "color",
-                      e.target.value
+                      event.target
+                        .value
                     )
                   }
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting
+                  }
                   className="max-w-40"
                 />
               </div>
@@ -500,6 +581,7 @@ export function NewVendorForm() {
           </div>
 
           {/* Description */}
+
           <div className="space-y-2">
             <Label htmlFor="description">
               Description
@@ -507,20 +589,28 @@ export function NewVendorForm() {
 
             <Textarea
               id="description"
-              value={form.description}
-              onChange={(e) =>
+              value={
+                form.description
+              }
+              onChange={(
+                event
+              ) =>
                 updateField(
                   "description",
-                  e.target.value
+                  event.target
+                    .value
                 )
               }
               placeholder="Brief description of the vendor relationship and services provided."
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
               rows={4}
             />
           </div>
 
           {/* Notes */}
+
           <div className="space-y-2">
             <Label htmlFor="notes">
               Internal Notes
@@ -528,15 +618,22 @@ export function NewVendorForm() {
 
             <Textarea
               id="notes"
-              value={form.notes}
-              onChange={(e) =>
+              value={
+                form.notes
+              }
+              onChange={(
+                event
+              ) =>
                 updateField(
                   "notes",
-                  e.target.value
+                  event.target
+                    .value
                 )
               }
               placeholder="Internal notes about this vendor."
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
               rows={4}
             />
           </div>
@@ -548,9 +645,13 @@ export function NewVendorForm() {
         <Button
           type="button"
           variant="outline"
-          disabled={isSubmitting}
+          disabled={
+            isSubmitting
+          }
           onClick={() =>
-            router.push("/vendors")
+            router.push(
+              "/vendors"
+            )
           }
         >
           Cancel
@@ -558,7 +659,9 @@ export function NewVendorForm() {
 
         <Button
           type="submit"
-          disabled={!canSubmit}
+          disabled={
+            !canSubmit
+          }
         >
           {isSubmitting ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

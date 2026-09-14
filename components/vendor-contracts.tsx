@@ -447,16 +447,16 @@ export function VendorContracts({
   ) => {
     switch (status) {
       case "active":
-        return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+        return "bg-primary/10 text-primary"
 
       case "expiring":
-        return "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+        return "bg-warning/10 text-amber"
 
       case "expired":
-        return "bg-red-500/10 text-red-700 dark:text-red-400"
+        return "bg-destructive/10 text-destructive"
 
       case "terminated":
-        return "bg-red-500/10 text-red-700 dark:text-red-400"
+        return "bg-destructive/10 text-destructive"
 
       default:
         return "bg-muted text-muted-foreground"

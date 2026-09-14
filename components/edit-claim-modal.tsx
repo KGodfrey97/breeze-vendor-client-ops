@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { COMMON_DENIAL_REASONS, DENIAL_REASON_GROUPS } from "@/constants/denial-reasons"
+import { COMMON_DENIAL_REASONS, DENIAL_REASON_GROUPS } from "@/lib/constants/denial-reasons"
 import { useEffect } from "react"
 
 

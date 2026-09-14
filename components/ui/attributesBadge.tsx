@@ -1,6 +1,6 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge"
-import { attributeColors } from "@/constants/attributesColors";
+import { attributeColors } from "@/lib/constants/attributesColors";
 
 type Attribute = keyof typeof attributeColors;
 export type AttributeValue<T extends Attribute> =

@@ -12,7 +12,8 @@ const sortableColumns: Record<string, string> = {
   vendor_code: "vendor_code",
   line_of_business: "line_of_business",
   vendor_tier: "vendor_tier",
-  grade: "grade",
+  grade: "health_score",
+  health_score: "health_score",
   status: "status",
   renewal_date: "renewal_date",
 }
@@ -27,12 +28,16 @@ function getVendorSelect() {
         v.line_of_business_id,
         v.name,
         v.vendor_code,
-        v.grade,
         v.vendor_tier,
         v.status,
         v.color,
         v.description,
         v.notes,
+
+        v.health_score,
+        v.health_grade,
+        v.health_calculated_at,
+
         v.created_by,
         v.updated_by,
         v.created_at,
@@ -42,14 +47,28 @@ function getVendorSelect() {
 
         (
           SELECT MIN(
-            COALESCE(c.renewal_date, c.end_date)
+            COALESCE(
+              c.renewal_date,
+              c.end_date
+            )
           )
+
           FROM contracts c
+
           WHERE c.vendor_id = v.id
             AND c.organization_id = v.organization_id
-            AND c.status IN ('active', 'expiring')
-            AND COALESCE(c.renewal_date, c.end_date) IS NOT NULL
-            AND COALESCE(c.renewal_date, c.end_date) >= CURRENT_DATE
+            AND c.status IN (
+              'active',
+              'expiring'
+            )
+            AND COALESCE(
+              c.renewal_date,
+              c.end_date
+            ) IS NOT NULL
+            AND COALESCE(
+              c.renewal_date,
+              c.end_date
+            ) >= CURRENT_DATE
         ) AS renewal_date
 
       FROM vendors v
@@ -61,14 +80,20 @@ function getVendorSelect() {
   `
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const { profile } = await requireAuthenticatedProfile()
+    const { profile } =
+      await requireAuthenticatedProfile()
 
-    const params = request.nextUrl.searchParams
+    const params =
+      request.nextUrl.searchParams
 
     const page = Math.max(
-      Number(params.get("page") ?? 1),
+      Number(
+        params.get("page") ?? 1
+      ),
       1
     )
 
@@ -82,10 +107,11 @@ export async function GET(request: NextRequest) {
       100
     )
 
-    const offset = (page - 1) * pageSize
+    const offset =
+      (page - 1) * pageSize
 
     const filters: string[] = [
-        "organization_id = $1",
+      "organization_id = $1",
     ]
 
     const values: unknown[] = [
@@ -110,7 +136,8 @@ export async function GET(request: NextRequest) {
     // Status
     // --------------------------------------------------
 
-    const status = params.get("status")
+    const status =
+      params.get("status")
 
     if (
       status &&
@@ -126,7 +153,8 @@ export async function GET(request: NextRequest) {
     // Line of Business
     // --------------------------------------------------
 
-    const lob = params.get("lob")
+    const lob =
+      params.get("lob")
 
     if (
       lob &&
@@ -142,7 +170,8 @@ export async function GET(request: NextRequest) {
     // Vendor Tier
     // --------------------------------------------------
 
-    const tier = params.get("tier")
+    const tier =
+      params.get("tier")
 
     if (
       tier &&
@@ -155,17 +184,18 @@ export async function GET(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // Grade
+    // Calculated Health Grade
     // --------------------------------------------------
 
-    const grade = params.get("grade")
+    const grade =
+      params.get("grade")
 
     if (
       grade &&
       grade !== "all"
     ) {
       addFilter(
-        "grade = ?",
+        "health_grade = ?",
         grade
       )
     }
@@ -179,36 +209,49 @@ export async function GET(request: NextRequest) {
     // Line of business
     // --------------------------------------------------
 
-    const search = params.get("search")?.trim()
+    const search =
+      params
+        .get("search")
+        ?.trim()
 
     if (search) {
       values.push(
         `%${search}%`
       )
 
-      const searchPlaceholder = `$${values.length}`
+      const searchPlaceholder =
+        `$${values.length}`
 
       filters.push(
         `(
-            name ILIKE ${searchPlaceholder}
-            OR vendor_code ILIKE ${searchPlaceholder}
-            OR line_of_business ILIKE ${searchPlaceholder}
+          name ILIKE ${searchPlaceholder}
+          OR vendor_code ILIKE ${searchPlaceholder}
+          OR line_of_business ILIKE ${searchPlaceholder}
         )`
-        )
+      )
     }
 
     // --------------------------------------------------
     // Sorting
     // --------------------------------------------------
 
-    const sortBy = params.get("sortBy") || "created_at"
-    const sortColumn = sortableColumns[sortBy] ?? "created_at"
+    const sortBy =
+      params.get("sortBy") ||
+      "created_at"
+
+    const sortColumn =
+      sortableColumns[
+        sortBy
+      ] ?? "created_at"
+
     const sortOrder =
-    params.get("sortOrder") === "asc"
+      params.get("sortOrder") ===
+      "asc"
         ? "ASC"
         : "DESC"
 
-    const where = filters.join(" AND ")
+    const where =
+      filters.join(" AND ")
 
     // --------------------------------------------------
     // Fetch vendors + total count
@@ -241,19 +284,36 @@ export async function GET(request: NextRequest) {
 
       query<{ count: string }>(
         `
-        SELECT COUNT(*)::text AS count
+        SELECT
+          COUNT(*)::text AS count
+
         FROM (
-            ${getVendorSelect()}
-            WHERE ${where}
+          ${getVendorSelect()}
+
+          WHERE ${where}
         ) filtered_vendors
         `,
         values
-        ),
+      ),
     ])
 
+    const vendors =
+      vendorsResult.rows.map(
+        (vendor: any) => ({
+          ...vendor,
+
+          health_score:
+            vendor.health_score !==
+            null
+              ? Number(
+                  vendor.health_score
+                )
+              : null,
+        })
+      )
+
     return NextResponse.json({
-      vendors:
-        vendorsResult.rows,
+      vendors,
 
       count: Number(
         countResult.rows[0]
@@ -272,21 +332,25 @@ export async function POST(
   request: NextRequest
 ) {
   try {
-    const { profile } = await requireAuthenticatedProfile()
+    const { profile } =
+      await requireAuthenticatedProfile()
 
-    const body = await request.json()
+    const body =
+      await request.json()
 
     // --------------------------------------------------
     // Normalize input
     // --------------------------------------------------
 
     const name =
-      typeof body.name === "string"
+      typeof body.name ===
+      "string"
         ? body.name.trim()
         : ""
 
     const vendorCode =
-      typeof body.vendorCode === "string"
+      typeof body.vendorCode ===
+      "string"
         ? body.vendorCode.trim()
         : ""
 
@@ -297,32 +361,32 @@ export async function POST(
         : null
 
     const vendorTier =
-      typeof body.vendorTier === "string"
+      typeof body.vendorTier ===
+      "string"
         ? body.vendorTier.trim()
         : ""
 
-    const grade =
-      typeof body.grade === "string"
-        ? body.grade
-        : null
-
     const status =
-      typeof body.status === "string"
+      typeof body.status ===
+      "string"
         ? body.status
         : "onboarding"
 
     const color =
-      typeof body.color === "string"
+      typeof body.color ===
+      "string"
         ? body.color.trim()
         : ""
 
     const description =
-      typeof body.description === "string"
+      typeof body.description ===
+      "string"
         ? body.description.trim()
         : ""
 
     const notes =
-      typeof body.notes === "string"
+      typeof body.notes ===
+      "string"
         ? body.notes.trim()
         : ""
 
@@ -382,59 +446,35 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // Validate grade
-    // --------------------------------------------------
-
-    const allowedGrades = [
-      "A",
-      "B",
-      "C",
-      "D",
-      "F",
-    ]
-
-    if (
-      grade &&
-      !allowedGrades.includes(
-        grade
-      )
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid vendor grade",
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    // --------------------------------------------------
     // Verify LOB belongs to same organization
     // --------------------------------------------------
 
-    const lobResult = await query(
-      `
-      SELECT id
-      FROM lines_of_business
-      WHERE id = $1
-        AND organization_id = $2
-        AND is_active = TRUE
-      LIMIT 1
-      `,
-      [
-        lineOfBusinessId,
-        profile.organization_id,
-      ]
-    )
+    const lobResult =
+      await query(
+        `
+        SELECT id
+
+        FROM lines_of_business
+
+        WHERE id = $1
+          AND organization_id = $2
+          AND is_active = TRUE
+
+        LIMIT 1
+        `,
+        [
+          lineOfBusinessId,
+          profile.organization_id,
+        ]
+      )
 
     if (
       lobResult.rowCount === 0
     ) {
       return NextResponse.json(
         {
-          error: "Line of business not found",
+          error:
+            "Line of business not found",
         },
         {
           status: 400,
@@ -446,70 +486,74 @@ export async function POST(
     // Create vendor
     // --------------------------------------------------
 
-    const result = await query(
-      `
-      INSERT INTO vendors (
-        organization_id,
-        line_of_business_id,
-        name,
-        vendor_code,
-        grade,
-        vendor_tier,
-        status,
-        color,
-        description,
-        notes,
-        created_by,
-        updated_by
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        $11,
-        $11
+    const result =
+      await query(
+        `
+        INSERT INTO vendors (
+          organization_id,
+          line_of_business_id,
+          name,
+          vendor_code,
+          vendor_tier,
+          status,
+          color,
+          description,
+          notes,
+          created_by,
+          updated_by
+        )
+
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $10
+        )
+
+        RETURNING
+          id,
+          organization_id,
+          line_of_business_id,
+          name,
+          vendor_code,
+          vendor_tier,
+          status,
+          color,
+          description,
+          notes,
+
+          health_score,
+          health_grade,
+          health_calculated_at,
+
+          created_by,
+          updated_by,
+          created_at,
+          updated_at
+        `,
+        [
+          profile.organization_id,
+          lineOfBusinessId,
+          name,
+          vendorCode || null,
+          vendorTier || null,
+          status,
+          color || null,
+          description || null,
+          notes || null,
+          profile.id,
+        ]
       )
 
-      RETURNING
-        id,
-        organization_id,
-        line_of_business_id,
-        name,
-        vendor_code,
-        grade,
-        vendor_tier,
-        status,
-        color,
-        description,
-        notes,
-        created_by,
-        updated_by,
-        created_at,
-        updated_at
-      `,
-      [
-        profile.organization_id,
-        lineOfBusinessId,
-        name,
-        vendorCode || null,
-        grade || null,
-        vendorTier || null,
-        status,
-        color || null,
-        description || null,
-        notes || null,
-        profile.id,
-      ]
-    )
-
-    const vendor = result.rows[0]
+    const vendor =
+      result.rows[0]
 
     return NextResponse.json(
       {
@@ -520,13 +564,14 @@ export async function POST(
       }
     )
   } catch (error: any) {
-    // Unique vendor name constraint
     if (
-      error?.code === "23505"
+      error?.code ===
+      "23505"
     ) {
       return NextResponse.json(
         {
-          error: "A vendor with this name already exists.",
+          error:
+            "A vendor with this name already exists.",
         },
         {
           status: 409,

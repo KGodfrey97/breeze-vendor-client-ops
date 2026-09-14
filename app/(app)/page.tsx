@@ -2,183 +2,270 @@
 
 import { useEffect, useState } from "react"
 import CountUp from "react-countup"
-import { useAuth } from "@/hooks/useAuth"
 import Link from "next/link"
-import { CheckCircle2, Clock, DollarSign, FileText, Loader2, AlertCircle, RefreshCw } from "lucide-react"
+import { useRouter } from "next/navigation"
+
+import {
+  AlertCircle,
+  BarChart3,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  CircleDollarSign,
+  Gauge,
+  RefreshCw,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react"
+
+import { useAuth } from "@/hooks/useAuth"
+
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Overview } from "@/components/overview"
-import { RecentClaims } from "@/components/recent-claims"
-import { StatusDistribution } from "@/components/status-distribution"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Database } from "@/lib/db-types"
-import { useRouter } from "next/navigation";
+import {
+  Alert,
+  AlertDescription,
+} from "@/components/ui/alert"
 
-type ClaimWithRelations = Database["public"]["Tables"]["claims"]["Row"] & {
-  id: string
-  claim_id?: string | null
-  original_claim_amount?: number | null
+import { DashboardBudgetStatusChart } from "@/components/dashboard-budget-status-chart"
+import { DashboardVendorHealthChart } from "@/components/dashboard-vendor-health-chart"
 
-  status?: string | null
-  priority?: string | null
-  appeal_type?: string | null
-  letter_status?: string | null
-
-  created_at?: string | null
-  updated_at?: string | null
-
-  patients?: {
-    first_name: string | null
-    last_name: string | null
-  } | null
-
-  profiles?: {
-    full_name: string | null
-    organization: string | null
-  } | null
+type GradeDistribution = {
+  A: number
+  B: number
+  C: number
+  D: number
+  F: number
+  noData: number
 }
 
-interface DashboardStats {
-  totalClaims: number
-  successRate: number
-  processingClaims: number
-  recoveredRevenue: number
-  statusCounts: Array<{ status: string; count: number }>
-}
+type DashboardData = {
+  totals: {
+    vendors: number
+    activeVendors: number
+    currentYearBudget: number
+    forecastSpend: number
+    budgetVariance: number
+    expiringVendors: number
+  }
 
-interface LoadingState {
-  stats: boolean
-  followUpClaims: boolean
-  user: boolean
-}
+  budgetStatus: {
+    withinBudget: number
+    overBudget: number
+    noData: number
+  }
 
-interface Claim {
-  status: string | null
-  original_claim_amount: number | null
-  created_at: string | null
-}
+  health: {
+    averageScore: number | null
+    gradeDistribution: GradeDistribution
+  }
 
+  performance: {
+    totalMetrics: number
+    measuredMetrics: number
+    met: number
+    missed: number
+    complianceRate: number | null
+  }
 
-interface ChartData {
-  name: string
-  submitted: number
-  overturned: number
-  denied: number
-}
-
-interface PerformanceRowProps {
-  label: string
-  value: number
+  renewals: Array<{
+    vendorId: string
+    vendorName: string
+    contractId: string
+    contractName: string
+    renewalDate: string
+  }>
 }
 
 export default function DashboardPage() {
-  console.log("Dashboard mounted");
-
-  const { user, loading: authLoading, error: authError, initialized } = useAuth()
-
-  console.log({
+  const {
     user,
-    authLoading,
-    authError,
+    loading: authLoading,
+    error: authError,
     initialized,
-  });
-  
-  const router = useRouter();
+  } = useAuth()
+
+  const router = useRouter()
+
+  const [dashboard, setDashboard] =
+    useState<DashboardData | null>(null)
+
+  const [isLoading, setIsLoading] =
+    useState(true)
+
+  const [error, setError] =
+    useState<string | null>(null)
 
   useEffect(() => {
-    if (initialized && !authLoading && !user) {
-      router.replace('/auth/login');
+    if (
+      initialized &&
+      !authLoading &&
+      !user
+    ) {
+      router.replace("/auth/login")
     }
-  }, [initialized, authLoading, user]);
+  }, [
+    initialized,
+    authLoading,
+    user,
+    router,
+  ])
 
-  const [chartData, setChartData] = useState<ChartData[]>([])
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [followUpClaims, setFollowUpClaims] = useState<ClaimWithRelations[]>([])
-  const [timeRange, setTimeRange] = useState("all")
-  const [loading, setLoading] = useState<LoadingState>({
-    stats: true,
-    followUpClaims: true,
-    user: true
-  })
-  const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
-  const fetchDashboardData = async (isRetry = false) => {
-    try {
-      if (isRetry) {
+  const fetchDashboardData =
+    async () => {
+      try {
+        setIsLoading(true)
         setError(null)
-        setLoading({
-          stats: true,
-          followUpClaims: true,
-          user: false
-        })
+
+        const response =
+          await fetch(
+            "/api/dashboard",
+            {
+              cache: "no-store",
+            }
+          )
+
+        const payload =
+          await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            payload.error ||
+              "Unable to load dashboard data"
+          )
+        }
+
+        setDashboard(payload)
+      } catch (error) {
+        console.error(
+          "Error fetching dashboard data:",
+          error
+        )
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred"
+        )
+      } finally {
+        setIsLoading(false)
       }
-
-
-      const response = await fetch(`/api/dashboard?timeRange=${encodeURIComponent(timeRange)}`, { cache: "no-store" })
-      const payload = await response.json()
-      if (!response.ok) {
-        throw new Error(payload.error || "Unable to load dashboard data")
-      }
-
-      setStats(payload.stats)
-      setChartData(payload.chartData)
-      setLoading(prev => ({ ...prev, stats: false }))
-      setFollowUpClaims((payload.followUpClaims || []) as ClaimWithRelations[])
-      setLoading(prev => ({ ...prev, followUpClaims: false }))
-      
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error)
-      setError(error instanceof Error ? error.message : "An unexpected error occurred")
-      setLoading({
-        stats: false,
-        followUpClaims: false,
-        user: false
-      })
     }
-  }
 
   useEffect(() => {
-    if (!initialized || authLoading) return;
-    if (!user) return;
+    if (
+      !initialized ||
+      authLoading ||
+      !user
+    ) {
+      return
+    }
 
-    fetchDashboardData();
-  }, [initialized, authLoading, user, timeRange]);
+    fetchDashboardData()
+  }, [
+    initialized,
+    authLoading,
+    user,
+  ])
 
-  const handleRetry = () => {
-    setRetryCount(prev => prev + 1)
-    fetchDashboardData(true)
+  const formatCurrency = (
+    value: number
+  ) => {
+    return new Intl.NumberFormat(
+      "en-US",
+      {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      }
+    ).format(value)
   }
 
-  // Full page loading (initial load)
-  // Show loading while auth is being determined
-  if (!initialized || authLoading) {
+  const formatDate = (
+    value: string
+  ) => {
+    return new Date(
+      `${value.slice(0, 10)}T00:00:00`
+    ).toLocaleDateString(
+      "en-US",
+      {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }
+    )
+  }
+
+  const getDaysUntil = (
+    value: string
+  ) => {
+    const today = new Date()
+
+    today.setHours(
+      0,
+      0,
+      0,
+      0
+    )
+
+    const date = new Date(
+      `${value.slice(0, 10)}T00:00:00`
+    )
+
+    return Math.ceil(
+      (date.getTime() -
+        today.getTime()) /
+        (1000 * 60 * 60 * 24)
+    )
+  }
+
+  if (
+    !initialized ||
+    authLoading
+  ) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Loading dashboard...</p>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="space-y-4 text-center">
+          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-primary" />
+
+          <p className="text-muted-foreground">
+            Loading dashboard...
+          </p>
         </div>
       </div>
     )
   }
 
-
-  // Show error if auth failed
-  if (authError && !user) {
+  if (
+    authError &&
+    !user
+  ) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
+
           <AlertDescription className="flex items-center justify-between">
-            <span>{authError}</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => window.location.href = '/auth/login'}
+            <span>
+              {authError}
+            </span>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.location.href =
+                  "/auth/login"
+              }
               className="ml-4"
             >
               Go to Login
@@ -189,33 +276,47 @@ export default function DashboardPage() {
     )
   }
 
-  // If no user after auth loading is complete, redirect will happen via useAuth hook
-  if (initialized && !authLoading && !user) {
+  if (
+    initialized &&
+    !authLoading &&
+    !user
+  ) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Redirecting to login...</p>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="space-y-4 text-center">
+          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-primary" />
+
+          <p className="text-muted-foreground">
+            Redirecting to login...
+          </p>
         </div>
       </div>
     )
   }
 
-  // Error state with retry option
-  if (error && !loading.stats && !loading.followUpClaims) {
+  if (
+    error &&
+    !isLoading
+  ) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
+
           <AlertDescription className="flex items-center justify-between">
-            <span>{error}</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRetry}
+            <span>
+              {error}
+            </span>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={
+                fetchDashboardData
+              }
               className="ml-4"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="mr-2 h-4 w-4" />
               Retry
             </Button>
           </AlertDescription>
@@ -224,189 +325,613 @@ export default function DashboardPage() {
     )
   }
 
-  function PerformanceRow({ label, value }: PerformanceRowProps) {
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">{label}</span>
-          <span className="text-muted-foreground">{value}%</span>
-        </div>
-        <Progress value={value} />
-      </div>
-    )
-  }
+  const totals =
+    dashboard?.totals
+
+  const budget =
+    dashboard?.budgetStatus
+
+  const health =
+    dashboard?.health
+
+  const performance =
+    dashboard?.performance
+
+  const renewals =
+    dashboard?.renewals || []
+
+  const totalBudgetVendors =
+    (budget?.withinBudget || 0) +
+    (budget?.overBudget || 0) +
+    (budget?.noData || 0)
+
+  const withinBudgetPercent =
+    totalBudgetVendors > 0
+      ? ((budget?.withinBudget || 0) /
+          totalBudgetVendors) *
+        100
+      : 0
+
+  const metPercent =
+    performance?.measuredMetrics
+      ? (performance.met /
+          performance.measuredMetrics) *
+        100
+      : 0
 
   return (
-    <div className="app-page">
-      <div className="flex items-center justify-end gap-3">
-        <span className="text-sm text-muted-foreground">
-          Reporting Range
-        </span>
+    <div className="app-page space-y-6">
 
-        <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All time</SelectItem>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Header */}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">
+            Dashboard
+          </h1>
+
+          <p className="text-muted-foreground">
+            Vendor operations overview
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={
+            fetchDashboardData
+          }
+          disabled={isLoading}
+        >
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${
+              isLoading
+                ? "animate-spin"
+                : ""
+            }`}
+          />
+
+          Refresh
+        </Button>
       </div>
 
+      {/* Top KPI Cards */}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+        {/* Total Vendors */}
+
         <Card className="app-surface">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Claims</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">
+              Total Vendors
+            </CardTitle>
+
+            <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
+
           <CardContent>
-            {loading.stats ? (
+            {isLoading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-2xl font-bold">
-                <CountUp end={stats?.totalClaims || 0} duration={1.2} />
-              </div>
+              <>
+                <div className="text-2xl font-bold">
+                  <CountUp
+                    end={
+                      totals?.vendors ||
+                      0
+                    }
+                    duration={1.2}
+                  />
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {totals?.activeVendors ||
+                    0}{" "}
+                  active vendors
+                </p>
+              </>
             )}
           </CardContent>
         </Card>
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading.stats ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <div className="text-2xl font-bold">
-                <CountUp end={stats?.successRate || 0} duration={1.2} suffix="%" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Budget */}
 
         <Card className="app-surface">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Processing Claims</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {loading.stats ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <div className="text-2xl font-bold">
-                <CountUp end={stats?.processingClaims || 0} duration={1.2} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <CardTitle className="text-sm font-medium">
+              Current-Year Budget
+            </CardTitle>
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Recovered Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
+
           <CardContent>
-            {loading.stats ? (
+            {isLoading ? (
               <Skeleton className="h-8 w-24" />
             ) : (
-              <div className="text-2xl font-bold">
-                $
-                <CountUp
-                  end={stats?.recoveredRevenue || 0}
-                  duration={1.2}
-                  separator=","
+              <>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(
+                    totals?.currentYearBudget ||
+                      0
+                  )}
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Forecast:{" "}
+                  {formatCurrency(
+                    totals?.forecastSpend ||
+                      0
+                  )}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Budget Variance */}
+
+        <Card className="app-surface">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">
+              Budget Variance
+            </CardTitle>
+
+            {(totals?.budgetVariance ||
+              0) >= 0 ? (
+              <TrendingDown className="h-4 w-4 text-primary" />
+            ) : (
+              <TrendingUp className="h-4 w-4 text-destructive" />
+            )}
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div
+                  className={`text-2xl font-bold ${
+                    (totals?.budgetVariance ||
+                      0) >= 0
+                      ? "text-primary"
+                      : "text-destructive"
+                  }`}
+                >
+                  {formatCurrency(
+                    Math.abs(
+                      totals?.budgetVariance ||
+                        0
+                    )
+                  )}
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {(totals?.budgetVariance ||
+                    0) >= 0
+                    ? "Under forecasted budget"
+                    : "Over forecasted budget"}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Expiring Vendors */}
+
+        <Card className="app-surface">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">
+              Upcoming Renewals
+            </CardTitle>
+
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  <CountUp
+                    end={
+                      totals?.expiringVendors ||
+                      0
+                    }
+                    duration={1.2}
+                  />
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Next 90 days
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Health + Budget Status */}
+
+      <div className="grid gap-4 lg:grid-cols-7">
+
+        {/* Health */}
+
+        <Card className="app-surface lg:col-span-4">
+          <CardHeader>
+            <CardTitle>
+              Vendor Health
+            </CardTitle>
+
+            <CardDescription>
+              Overall vendor health based on performance, budget, and contracts
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-56 w-full" />
+            ) : (
+              <div className="space-y-6">
+
+                <div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Average Health Score
+                      </p>
+
+                      <p className="mt-1 text-4xl font-bold">
+                        {health?.averageScore !=
+                        null
+                          ? health.averageScore.toFixed(
+                              1
+                            )
+                          : "—"}
+
+                        {health?.averageScore !=
+                          null && (
+                          <span className="ml-1 text-base font-normal text-muted-foreground">
+                            / 100
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    <Gauge className="h-8 w-8 text-muted-foreground" />
+                  </div>
+
+                  <Progress
+                    className="mt-4"
+                    value={
+                      health?.averageScore ||
+                      0
+                    }
+                  />
+                </div>
+
+                <DashboardVendorHealthChart
+                  distribution={
+                    health?.gradeDistribution || {
+                      A: 0,
+                      B: 0,
+                      C: 0,
+                      D: 0,
+                      F: 0,
+                      noData: 0,
+                    }
+                  }
                 />
               </div>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4 app-surface">
-          <CardHeader>
-            <CardTitle>Claim Activity</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {loading.stats ? <Skeleton className="h-64 w-full" /> : <Overview data={chartData} />}
-          </CardContent>
-        </Card>
+        {/* Budget Status */}
 
-        <Card className="col-span-3 app-surface">
+        <Card className="app-surface lg:col-span-3">
           <CardHeader>
-            <CardTitle>Status Distribution</CardTitle>
+            <CardTitle>
+              Budget Status
+            </CardTitle>
+
             <CardDescription>
-              Distribution of claims by current status
+              Current-year vendor budget health
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-6">
-            {loading.stats ? (
+
+          <CardContent>
+            {isLoading ? (
               <Skeleton className="h-48 w-full" />
             ) : (
-              <StatusDistribution statusCounts={stats?.statusCounts || []} />
+              <div className="space-y-6">
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">
+                      Within Budget
+                    </span>
+
+                    <span className="text-sm font-semibold text-primary">
+                      {budget?.withinBudget ||
+                        0}
+                    </span>
+                  </div>
+
+                  <Progress
+                    value={
+                      withinBudgetPercent
+                    }
+                    className="mt-2"
+                  />
+                </div>
+
+                <DashboardBudgetStatusChart
+                  withinBudget={
+                    budget?.withinBudget || 0
+                  }
+                  overBudget={
+                    budget?.overBudget || 0
+                  }
+                  noData={
+                    budget?.noData || 0
+                  }
+                />
+
+                <div className="border-t pt-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Forecast Spend
+                    </span>
+
+                    <span className="font-medium">
+                      {formatCurrency(
+                        totals?.forecastSpend ||
+                          0
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Approved Budget
+                    </span>
+
+                    <span className="font-medium">
+                      {formatCurrency(
+                        totals?.currentYearBudget ||
+                          0
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4 app-surface">
+      {/* Renewals + Performance */}
+
+      <div className="grid gap-4 lg:grid-cols-7">
+
+        {/* Renewals */}
+
+        <Card className="app-surface lg:col-span-4">
           <CardHeader>
-            <CardTitle>Approaching Follow-Up</CardTitle>
+            <CardTitle>
+              Upcoming Renewals
+            </CardTitle>
+
             <CardDescription>
-              Overdue claims and claims with follow-up dates in the next 7 days
+              Active vendor contracts approaching renewal
             </CardDescription>
           </CardHeader>
 
           <CardContent>
-            {loading.followUpClaims ? (
-              <Skeleton className="h-24 w-full" />
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : renewals.length ===
+              0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <CalendarClock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+
+                <p className="font-medium">
+                  No upcoming renewals
+                </p>
+
+                <p className="mt-1 text-sm text-muted-foreground">
+                  No active vendor contracts renew within the next 90 days.
+                </p>
+              </div>
             ) : (
-              <RecentClaims
-                claims={followUpClaims}
-                emptyMessage="No claims are overdue or approaching their follow-up date."
-                showFollowUpDate
-              />
+              <div className="space-y-2">
+                {renewals.map(
+                  (renewal) => {
+                    const daysUntil =
+                      getDaysUntil(
+                        renewal.renewalDate
+                      )
+
+                    return (
+                      <Link
+                        key={
+                          renewal.contractId
+                        }
+                        href={`/vendors/${renewal.vendorId}`}
+                        className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
+                            {
+                              renewal.vendorName
+                            }
+                          </p>
+
+                          <p className="truncate text-sm text-muted-foreground">
+                            {
+                              renewal.contractName
+                            }
+                          </p>
+                        </div>
+
+                        <div className="ml-4 shrink-0 text-right">
+                          <p className="text-sm font-medium">
+                            {formatDate(
+                              renewal.renewalDate
+                            )}
+                          </p>
+
+                          <p
+                            className={`text-xs ${
+                              daysUntil <=
+                              30
+                                ? "text-destructive"
+                                : daysUntil <=
+                                  60
+                                ? "text-warning"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {daysUntil}{" "}
+                            days
+                          </p>
+                        </div>
+                      </Link>
+                    )
+                  }
+                )}
+              </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-3 app-surface">
-          <CardHeader>
-            <CardTitle>Claim Performance</CardTitle>
-            <CardDescription>Success rate by claim type</CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            <div className="space-y-4">
-
-              <PerformanceRow label="Medical Necessity" value={78} />
-              <PerformanceRow label="Coding Errors" value={64} />
-              <PerformanceRow label="Coverage Issues" value={52} />
-              <PerformanceRow label="Prior Authorization" value={71} />
-              <PerformanceRow label="Network Issues" value={45} />
-
-            </div>
           </CardContent>
 
           <CardFooter>
             <Link
-              href="/analytics"
+              href="/vendors"
               className="text-sm text-muted-foreground hover:underline"
             >
-              View detailed analytics
+              View all vendors
             </Link>
           </CardFooter>
-
         </Card>
 
-      </div>
+        {/* KPI / SLA Performance */}
 
+        <Card className="app-surface lg:col-span-3">
+          <CardHeader>
+            <CardTitle>
+              KPI / SLA Performance
+            </CardTitle>
+
+            <CardDescription>
+              Latest results across active vendor metrics
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <div className="space-y-5">
+
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Compliance Rate
+                    </p>
+
+                    <p className="mt-1 text-3xl font-bold">
+                      {performance
+                        ?.complianceRate !=
+                      null
+                        ? `${performance.complianceRate.toFixed(
+                            1
+                          )}%`
+                        : "—"}
+                    </p>
+                  </div>
+
+                  <BarChart3 className="h-7 w-7 text-muted-foreground" />
+                </div>
+
+                <Progress
+                  value={metPercent}
+                />
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-lg border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      Met
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold text-primary">
+                      {performance?.met ||
+                        0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      Missed
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold text-destructive">
+                      {performance
+                        ?.missed || 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      Measured
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold">
+                      {performance
+                        ?.measuredMetrics ||
+                        0}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Active Metrics
+                    </span>
+
+                    <span className="font-medium">
+                      {performance
+                        ?.totalMetrics ||
+                        0}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Awaiting Results
+                    </span>
+
+                    <span className="font-medium">
+                      {Math.max(
+                        (performance
+                          ?.totalMetrics ||
+                          0) -
+                          (performance
+                            ?.measuredMetrics ||
+                            0),
+                        0
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

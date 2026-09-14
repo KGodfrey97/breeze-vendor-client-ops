@@ -25,6 +25,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
+import { VENDOR_STATUS_LABELS } from "@/lib/constants/vendor-status"
 
 interface LineOfBusinessOption {
   id: string
@@ -328,7 +329,7 @@ export function VendorsFilter({
 
               <div className="space-y-2">
                 <Label htmlFor="grade">
-                  Grade
+                  Health Grade
                 </Label>
 
                 <Select
@@ -345,12 +346,12 @@ export function VendorsFilter({
                   }
                 >
                   <SelectTrigger id="grade">
-                    <SelectValue placeholder="Select grade" />
+                    <SelectValue placeholder="Select health grade" />
                   </SelectTrigger>
 
                   <SelectContent>
                     <SelectItem value="all">
-                      All Grades
+                      All Health Grades
                     </SelectItem>
 
                     <SelectItem value="A">
@@ -393,8 +394,7 @@ export function VendorsFilter({
                   onValueChange={(value) =>
                     setFilters({
                       ...filters,
-                      vendorStatus:
-                        value,
+                      vendorStatus: value,
                     })
                   }
                 >
@@ -404,24 +404,19 @@ export function VendorsFilter({
 
                   <SelectContent>
                     <SelectItem value="all">
-                      All
+                      All Statuses
                     </SelectItem>
 
-                    <SelectItem value="onboarding">
-                      Onboarding
-                    </SelectItem>
-
-                    <SelectItem value="active">
-                      Active
-                    </SelectItem>
-
-                    <SelectItem value="under_review">
-                      Under Review
-                    </SelectItem>
-
-                    <SelectItem value="inactive">
-                      Inactive
-                    </SelectItem>
+                    {Object.entries(
+                      VENDOR_STATUS_LABELS
+                    ).map(([value, label]) => (
+                      <SelectItem
+                        key={value}
+                        value={value}
+                      >
+                        {label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -104,19 +104,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       icon: LayoutDashboard,
     },
     {
-      title: "Claims",
-      href: "/claims",
+      title: "Vendors",
+      href: "/vendors",
       icon: FileText,
     },
     {
-      title: "New Claim",
-      href: "/claims/new",
+      title: "New Vendor",
+      href: "/vendors/new",
       icon: Plus,
-    },
-    {
-      title: "Patients",
-      href: "/patients",
-      icon: Users,
     },
     {
       title: "Activity",

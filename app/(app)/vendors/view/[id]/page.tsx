@@ -5,7 +5,7 @@ import Link from "next/link"
 
 import { useEffect } from "react"
 
-import { Check, X, ArrowLeft, Building2, Edit, FileText, Gauge, Tag } from "lucide-react"
+import { Check, X, ArrowLeft, Building2, Edit, FileText, Tag } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { InfoCard } from "@/components/ui/info-card"
@@ -23,6 +23,10 @@ import { useVendor } from "@/hooks/use-vendors"
 
 import { VendorContacts } from "@/components/vendor-contacts"
 import { VendorContracts } from "@/components/vendor-contracts"
+import { VendorBudget } from "@/components/vendor-budget"
+import { VendorPerformance } from "@/components/vendor-performance"
+import { VendorHealth } from "@/components/vendor-health"
+import { VendorMeetings } from "@/components/vendor-meetings"
 
 export default function VendorDetailsPage() {
   const params = useParams()
@@ -35,7 +39,6 @@ export default function VendorDetailsPage() {
     lineOfBusinessId: "",
     vendorTier: "",
     status: "",
-    grade: "",
   })
 
   const [editingDescription, setEditingDescription] = useState(false)
@@ -44,6 +47,12 @@ export default function VendorDetailsPage() {
     description: "",
     notes: "",
   })
+
+  const [healthRefreshKey, setHealthRefreshKey] = useState(0)
+
+  const refreshVendorHealth = () => {
+    setHealthRefreshKey((prev) => prev + 1)
+  }
 
   const vendorId =
     Array.isArray(params.id)
@@ -120,7 +129,6 @@ export default function VendorDetailsPage() {
       lineOfBusinessId: vendor.line_of_business_id || "",
       vendorTier: vendor.vendor_tier || "",
       status: vendor.status || "",
-      grade: vendor.grade || "",
     })
   }, [vendor])
 
@@ -137,7 +145,6 @@ export default function VendorDetailsPage() {
           lineOfBusinessId: vendorForm.lineOfBusinessId || null,
           vendorTier: vendorForm.vendorTier || null,
           status: vendorForm.status,
-          grade: vendorForm.grade || null,
         }),
       })
 
@@ -243,8 +250,8 @@ export default function VendorDetailsPage() {
           background: `
             radial-gradient(
               ellipse at top center,
-              ${vendor.color || "#64748b"}33 0%,
-              ${vendor.color || "#64748b"}1a 35%,
+              ${vendor.color || "hsl(var(--muted-foreground))"}33 0%,
+              ${vendor.color || "hsl(var(--muted-foreground))"}1a 35%,
               transparent 75%
             )
           `,
@@ -300,15 +307,6 @@ export default function VendorDetailsPage() {
                 </span>
               </div>
 
-              <div className="rounded-xl border border-border bg-card px-3 py-2 text-sm">
-                <span className="text-muted-foreground">
-                  Grade:
-                </span>{" "}
-                <span className="font-semibold">
-                  {vendor.grade ||
-                    "Not Graded"}
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -337,7 +335,6 @@ export default function VendorDetailsPage() {
                           lineOfBusinessId: vendor.line_of_business_id || "",
                           vendorTier: vendor.vendor_tier || "",
                           status: vendor.status || "",
-                          grade: vendor.grade || "",
                         })
                       }}
                     >
@@ -464,32 +461,6 @@ export default function VendorDetailsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label>Grade</Label>
-                    <Select
-                      value={vendorForm.grade || "none"}
-                      onValueChange={(value) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          grade: value === "none" ? "" : value,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-
-                      <SelectContent>
-                        <SelectItem value="none">Not Graded</SelectItem>
-                        <SelectItem value="A">A</SelectItem>
-                        <SelectItem value="B">B</SelectItem>
-                        <SelectItem value="C">C</SelectItem>
-                        <SelectItem value="D">D</SelectItem>
-                        <SelectItem value="F">F</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               ) : (
                 <InfoGrid>
@@ -498,7 +469,6 @@ export default function VendorDetailsPage() {
                   <InfoField label="Line of Business" value={vendor.line_of_business} />
                   <InfoField label="Vendor Tier" value={vendor.vendor_tier} />
                   <InfoField label="Status" value={formatStatus(vendor.status)} />
-                  <InfoField label="Grade" value={vendor.grade || "Not Graded"} />
                 </InfoGrid>
               )}
             </InfoCard>
@@ -609,7 +579,18 @@ export default function VendorDetailsPage() {
 
             <VendorContracts
               vendorId={vendor.id}
-              onUpdated={refetch}
+              onUpdated={async () => {
+                await refetch()
+              }}
+            />
+
+            <VendorMeetings
+              vendorId={vendor.id}
+            />
+
+            <VendorPerformance
+              vendorId={vendor.id}
+              onUpdated={refreshVendorHealth}
             />
 
             {/* Relationship */}
@@ -645,36 +626,19 @@ export default function VendorDetailsPage() {
 
           {/* Right sidebar */}
           <div className="space-y-6">
+            
+            <VendorBudget
+              vendorId={vendor.id}
+              onUpdated={async () => {
+                await refetch()
+                refreshVendorHealth()
+              }}
+            />
 
-            {/* Status / Health */}
-            <InfoCard
-              title="Vendor Health"
-              icon={Gauge}
-            >
-              <InfoGrid>
-                <InfoField
-                  label="Status"
-                  value={formatStatus(
-                    vendor.status
-                  )}
-                />
-
-                <InfoField
-                  label="Grade"
-                  value={
-                    vendor.grade ||
-                    "Not Graded"
-                  }
-                />
-
-                <InfoField
-                  label="Renewal"
-                  value={formatDate(
-                    vendor.renewal_date
-                  )}
-                />
-              </InfoGrid>
-            </InfoCard>
+            <VendorHealth
+              vendorId={vendor.id}
+              refreshKey={healthRefreshKey}
+            />
 
             {/* Future modules */}
             <InfoCard
@@ -683,23 +647,19 @@ export default function VendorDetailsPage() {
             >
               <div className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  Contracts
+                  Meetings and agenda tracking
                 </p>
 
                 <p>
-                  Budget
+                  Account reconciliation
                 </p>
 
                 <p>
-                  KPI / SLA performance
+                  Vendor reporting
                 </p>
 
                 <p>
-                  Meetings
-                </p>
-
-                <p>
-                  Vendor notes
+                  Quick Ask / AI insights
                 </p>
               </div>
             </InfoCard>

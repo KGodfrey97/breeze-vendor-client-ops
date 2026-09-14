@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { DollarSign, Plus, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { paymentStatuses } from "@/constants/paymentColors"
+import { paymentStatuses } from "@/lib/constants/paymentColors"
 
 interface Payment {
   id: string

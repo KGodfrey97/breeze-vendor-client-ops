@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { requireAuthenticatedProfile } from "@/lib/auth-server"
 
+import { recalculateVendorHealth } from "@/lib/vendor-health"
+
 type RouteContext = {
   params: Promise<{
     id: string
@@ -190,6 +192,11 @@ export async function PATCH(
       values
     )
 
+    await recalculateVendorHealth(
+      vendorId,
+      profile.organization_id
+    )
+
     return NextResponse.json({
       budget: result.rows[0],
     })
@@ -249,6 +256,11 @@ export async function DELETE(
         { status: 404 }
       )
     }
+
+    await recalculateVendorHealth(
+      vendorId,
+      profile.organization_id
+    )
 
     return NextResponse.json({
       success: true,

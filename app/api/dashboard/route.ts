@@ -1,91 +1,571 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 
-import { handleApiError } from "@/lib/api-response"
-import { requireAuthenticatedUser } from "@/lib/auth-server"
 import { query } from "@/lib/db"
+import { requireAuthenticatedProfile } from "@/lib/auth-server"
 
-export const runtime = "nodejs"
+type TotalsRow = {
+  vendors: string
+  active_vendors: string
+}
 
-export async function GET(request: NextRequest) {
+type BudgetTotalsRow = {
+  current_year_budget: string | null
+  forecast_spend: string | null
+}
+
+type BudgetStatusRow = {
+  within_budget: string
+  over_budget: string
+  no_data: string
+}
+
+type MetricSummaryRow = {
+  total_metrics: string
+  measured_metrics: string
+  met: string
+  missed: string
+}
+
+type RenewalRow = {
+  vendor_id: string
+  vendor_name: string
+  contract_id: string
+  contract_name: string
+  renewal_date: string
+}
+
+type RenewalCountRow = {
+  count: string
+}
+
+type HealthSummaryRow = {
+  average_score: string | null
+  grade_a: string
+  grade_b: string
+  grade_c: string
+  grade_d: string
+  grade_f: string
+  no_data: string
+}
+
+export async function GET() {
   try {
-    const user = await requireAuthenticatedUser()
-    const timeRange = request.nextUrl.searchParams.get("timeRange") || "all"
-    const days = timeRange === "all" ? null : Number(timeRange)
-    const startDate = days && Number.isFinite(days) ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null
+    const { profile } =
+      await requireAuthenticatedProfile()
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const followUpEnd = new Date(today)
-    followUpEnd.setDate(followUpEnd.getDate() + 7)
+    const organizationId =
+      profile.organization_id
 
-    const [claimsResult, followUpResult] = await Promise.all([
-      query<{ status: string | null; original_claim_amount: string | number | null; created_at: string | null }>(
-        `SELECT status, original_claim_amount, created_at
-         FROM claims
-         WHERE user_id = $1
-           AND ($2::timestamptz IS NULL OR created_at >= $2)`,
-        [user.id, startDate?.toISOString() ?? null],
+    const currentYear =
+      new Date().getFullYear()
+
+    const [
+      totalsResult,
+      budgetTotalsResult,
+      budgetStatusResult,
+      metricSummaryResult,
+      renewalsResult,
+      renewalCountResult,
+      healthResult,
+    ] = await Promise.all([
+      // ------------------------------------------------
+      // Vendor counts
+      // ------------------------------------------------
+
+      query<TotalsRow>(
+        `
+        SELECT
+          COUNT(*)::text AS vendors,
+
+          COUNT(*) FILTER (
+            WHERE status = 'active'
+          )::text AS active_vendors
+
+        FROM vendors
+
+        WHERE organization_id = $1
+        `,
+        [organizationId]
       ),
-      query(
-        `SELECT c.*, p.first_name, p.last_name, pr.full_name, pr.organization
-         FROM claims c
-         LEFT JOIN patients p ON p.id = c.patient_id AND p.user_id = c.user_id
-         LEFT JOIN profiles pr ON pr.id = c.created_by
-         WHERE c.user_id = $1
-           AND c.follow_up_date IS NOT NULL
-           AND c.follow_up_date <= $2::date
-           AND c.status = ANY($3::text[])
-         ORDER BY c.follow_up_date ASC`,
-        [user.id, followUpEnd.toISOString().slice(0, 10), ["processing", "under_review"]],
+
+      // ------------------------------------------------
+      // Current-year budget totals
+      // ------------------------------------------------
+
+      query<BudgetTotalsRow>(
+        `
+        SELECT
+          COALESCE(
+            SUM(budget_amount),
+            0
+          )::text AS current_year_budget,
+
+          COALESCE(
+            SUM(forecast_amount),
+            0
+          )::text AS forecast_spend
+
+        FROM vendor_budgets
+
+        WHERE organization_id = $1
+          AND budget_year = $2
+        `,
+        [
+          organizationId,
+          currentYear,
+        ]
+      ),
+
+      // ------------------------------------------------
+      // Budget status counts
+      // ------------------------------------------------
+
+      query<BudgetStatusRow>(
+        `
+        SELECT
+          COUNT(*) FILTER (
+            WHERE
+              vb.id IS NOT NULL
+              AND vb.forecast_amount IS NOT NULL
+              AND vb.forecast_amount <= vb.budget_amount
+          )::text AS within_budget,
+
+          COUNT(*) FILTER (
+            WHERE
+              vb.id IS NOT NULL
+              AND vb.forecast_amount IS NOT NULL
+              AND vb.forecast_amount > vb.budget_amount
+          )::text AS over_budget,
+
+          COUNT(*) FILTER (
+            WHERE
+              vb.id IS NULL
+              OR vb.forecast_amount IS NULL
+          )::text AS no_data
+
+        FROM vendors v
+
+        LEFT JOIN vendor_budgets vb
+          ON vb.vendor_id = v.id
+          AND vb.organization_id = v.organization_id
+          AND vb.budget_year = $2
+
+        WHERE v.organization_id = $1
+        `,
+        [
+          organizationId,
+          currentYear,
+        ]
+      ),
+
+      // ------------------------------------------------
+      // KPI / SLA performance
+      // ------------------------------------------------
+
+      query<MetricSummaryRow>(
+        `
+        WITH latest_results AS (
+          SELECT DISTINCT ON (vmr.metric_id)
+            vmr.metric_id,
+            vmr.status
+
+          FROM vendor_metric_results vmr
+
+          WHERE vmr.organization_id = $1
+
+          ORDER BY
+            vmr.metric_id,
+            vmr.period_end DESC,
+            vmr.created_at DESC
+        )
+
+        SELECT
+          COUNT(vm.id)::text AS total_metrics,
+
+          COUNT(lr.metric_id)::text AS measured_metrics,
+
+          COUNT(*) FILTER (
+            WHERE lr.status = 'met'
+          )::text AS met,
+
+          COUNT(*) FILTER (
+            WHERE lr.status = 'missed'
+          )::text AS missed
+
+        FROM vendor_metrics vm
+
+        LEFT JOIN latest_results lr
+          ON lr.metric_id = vm.id
+
+        WHERE vm.organization_id = $1
+          AND vm.is_active = TRUE
+        `,
+        [organizationId]
+      ),
+
+      // ------------------------------------------------
+      // Upcoming renewals
+      // Next 90 days, limited to 10 rows for display
+      // ------------------------------------------------
+
+      query<RenewalRow>(
+        `
+        SELECT
+          v.id AS vendor_id,
+          v.name AS vendor_name,
+
+          c.id AS contract_id,
+          c.name AS contract_name,
+
+          COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) AS renewal_date
+
+        FROM contracts c
+
+        JOIN vendors v
+          ON v.id = c.vendor_id
+          AND v.organization_id = c.organization_id
+
+        WHERE c.organization_id = $1
+
+          AND c.status IN (
+            'active',
+            'expiring'
+          )
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) IS NOT NULL
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) >= CURRENT_DATE
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) <=
+            CURRENT_DATE +
+            INTERVAL '90 days'
+
+        ORDER BY
+          COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) ASC
+
+        LIMIT 10
+        `,
+        [organizationId]
+      ),
+
+      // ------------------------------------------------
+      // True count of vendors with upcoming renewals
+      // ------------------------------------------------
+
+      query<RenewalCountRow>(
+        `
+        SELECT
+          COUNT(
+            DISTINCT c.vendor_id
+          )::text AS count
+
+        FROM contracts c
+
+        WHERE c.organization_id = $1
+
+          AND c.status IN (
+            'active',
+            'expiring'
+          )
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) IS NOT NULL
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) >= CURRENT_DATE
+
+          AND COALESCE(
+            c.renewal_date,
+            c.end_date
+          ) <=
+            CURRENT_DATE +
+            INTERVAL '90 days'
+        `,
+        [organizationId]
+      ),
+
+      // ------------------------------------------------
+      // Stored vendor health summary
+      // ------------------------------------------------
+
+      query<HealthSummaryRow>(
+        `
+        SELECT
+          AVG(health_score)::text
+            AS average_score,
+
+          COUNT(*) FILTER (
+            WHERE health_grade = 'A'
+          )::text AS grade_a,
+
+          COUNT(*) FILTER (
+            WHERE health_grade = 'B'
+          )::text AS grade_b,
+
+          COUNT(*) FILTER (
+            WHERE health_grade = 'C'
+          )::text AS grade_c,
+
+          COUNT(*) FILTER (
+            WHERE health_grade = 'D'
+          )::text AS grade_d,
+
+          COUNT(*) FILTER (
+            WHERE health_grade = 'F'
+          )::text AS grade_f,
+
+          COUNT(*) FILTER (
+            WHERE health_grade IS NULL
+          )::text AS no_data
+
+        FROM vendors
+
+        WHERE organization_id = $1
+        `,
+        [organizationId]
       ),
     ])
 
-    const allClaims = claimsResult.rows
-    const totalClaims = allClaims.length
-    const overturnedCount = allClaims.filter((claim) => claim.status === "overturned").length
-    const deniedCount = allClaims.filter((claim) => claim.status === "denied").length
-    const processingClaims = allClaims.filter((claim) => claim.status === "processing").length
-    const completedCount = overturnedCount + deniedCount
-    const successRate = completedCount > 0 ? Number(((overturnedCount / completedCount) * 100).toFixed(1)) : 0
-    const recoveredRevenue = allClaims
-      .filter((claim) => claim.status === "overturned")
-      .reduce((sum, claim) => sum + Number(claim.original_claim_amount ?? 0), 0)
+    // --------------------------------------------------
+    // Totals
+    // --------------------------------------------------
 
-    const monthlyMap = new Map<string, { name: string; submitted: number; overturned: number; denied: number }>()
-    for (const claim of allClaims) {
-      if (!claim.created_at) continue
-      const month = new Date(claim.created_at).toLocaleString("default", { month: "short", year: "2-digit" })
-      const row = monthlyMap.get(month) ?? { name: month, submitted: 0, overturned: 0, denied: 0 }
-      row.submitted += 1
-      if (claim.status === "overturned") row.overturned += 1
-      if (claim.status === "denied") row.denied += 1
-      monthlyMap.set(month, row)
+    const totalsRow =
+      totalsResult.rows[0]
+
+    const budgetRow =
+      budgetTotalsResult.rows[0]
+
+    const vendors =
+      Number(
+        totalsRow?.vendors ?? 0
+      )
+
+    const activeVendors =
+      Number(
+        totalsRow?.active_vendors ??
+          0
+      )
+
+    const currentYearBudget =
+      Number(
+        budgetRow
+          ?.current_year_budget ??
+          0
+      )
+
+    const forecastSpend =
+      Number(
+        budgetRow
+          ?.forecast_spend ??
+          0
+      )
+
+    const budgetVariance =
+      currentYearBudget -
+      forecastSpend
+
+    const expiringVendors =
+      Number(
+        renewalCountResult.rows[0]
+          ?.count ?? 0
+      )
+
+    // --------------------------------------------------
+    // Budget status
+    // --------------------------------------------------
+
+    const budgetStatusRow =
+      budgetStatusResult.rows[0]
+
+    const budgetStatus = {
+      withinBudget: Number(
+        budgetStatusRow
+          ?.within_budget ?? 0
+      ),
+
+      overBudget: Number(
+        budgetStatusRow
+          ?.over_budget ?? 0
+      ),
+
+      noData: Number(
+        budgetStatusRow
+          ?.no_data ?? 0
+      ),
     }
 
+    // --------------------------------------------------
+    // Performance
+    // --------------------------------------------------
+
+    const metricRow =
+      metricSummaryResult.rows[0]
+
+    const totalMetrics =
+      Number(
+        metricRow
+          ?.total_metrics ?? 0
+      )
+
+    const measuredMetrics =
+      Number(
+        metricRow
+          ?.measured_metrics ?? 0
+      )
+
+    const met =
+      Number(
+        metricRow?.met ?? 0
+      )
+
+    const missed =
+      Number(
+        metricRow?.missed ?? 0
+      )
+
+    const complianceRate =
+      measuredMetrics > 0
+        ? Math.round(
+            (met /
+              measuredMetrics) *
+              1000
+          ) / 10
+        : null
+
+    // --------------------------------------------------
+    // Health
+    // --------------------------------------------------
+
+    const healthRow =
+      healthResult.rows[0]
+
+    const averageScore =
+      healthRow
+        ?.average_score !== null &&
+      healthRow
+        ?.average_score !== undefined
+        ? Math.round(
+            Number(
+              healthRow.average_score
+            ) * 10
+          ) / 10
+        : null
+
+    const gradeDistribution = {
+      A: Number(
+        healthRow?.grade_a ?? 0
+      ),
+
+      B: Number(
+        healthRow?.grade_b ?? 0
+      ),
+
+      C: Number(
+        healthRow?.grade_c ?? 0
+      ),
+
+      D: Number(
+        healthRow?.grade_d ?? 0
+      ),
+
+      F: Number(
+        healthRow?.grade_f ?? 0
+      ),
+
+      noData: Number(
+        healthRow?.no_data ?? 0
+      ),
+    }
+
+    // --------------------------------------------------
+    // Renewals
+    // --------------------------------------------------
+
+    const renewals =
+      renewalsResult.rows.map(
+        (row) => ({
+          vendorId:
+            row.vendor_id,
+
+          vendorName:
+            row.vendor_name,
+
+          contractId:
+            row.contract_id,
+
+          contractName:
+            row.contract_name,
+
+          renewalDate:
+            row.renewal_date,
+        })
+      )
+
+    // --------------------------------------------------
+    // Final response
+    // --------------------------------------------------
+
     return NextResponse.json({
-      stats: {
-        totalClaims,
-        successRate,
-        processingClaims,
-        recoveredRevenue,
-        statusCounts: [
-          { status: "processing", count: processingClaims },
-          { status: "overturned", count: overturnedCount },
-          { status: "denied", count: deniedCount },
-        ].filter((item) => item.count > 0),
+      totals: {
+        vendors,
+        activeVendors,
+        currentYearBudget,
+        forecastSpend,
+        budgetVariance,
+        expiringVendors,
       },
-      chartData: Array.from(monthlyMap.values()),
-      followUpClaims: followUpResult.rows.map((claim) => ({
-        ...claim,
-        patients: claim.first_name
-          ? { first_name: claim.first_name, last_name: claim.last_name }
-          : null,
-        profiles: claim.full_name
-          ? { full_name: claim.full_name, organization: claim.organization }
-          : null,
-      })),
+
+      budgetStatus,
+
+      health: {
+        averageScore,
+        gradeDistribution,
+      },
+
+      performance: {
+        totalMetrics,
+        measuredMetrics,
+        met,
+        missed,
+        complianceRate,
+      },
+
+      renewals,
     })
   } catch (error) {
-    return handleApiError(error, "Failed to load dashboard data")
+    console.error(
+      "GET DASHBOARD ERROR:",
+      error
+    )
+
+    return NextResponse.json(
+      {
+        error:
+          "Failed to load dashboard",
+      },
+      {
+        status: 500,
+      }
+    )
   }
 }

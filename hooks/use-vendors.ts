@@ -3,16 +3,21 @@ import { useEffect, useState } from "react"
 export type VendorListItem = {
   id: string
   name: string
+
   vendor_code: string | null
-  grade: string | null
   vendor_tier: string | null
   status: string
+
   color: string | null
   description: string | null
   notes: string | null
 
   line_of_business_id: string | null
   line_of_business: string | null
+
+  health_score: number | null
+  health_grade: string | null
+  health_calculated_at: string | null
 
   renewal_date: string | null
 
@@ -26,78 +31,133 @@ export type LineOfBusinessOption = {
   description: string | null
 }
 
-export function useVendor(id: string | undefined) {
-  const [vendor, setVendor] = useState<VendorListItem | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function useVendor(
+  id: string | undefined
+) {
+  const [
+    vendor,
+    setVendor,
+  ] =
+    useState<VendorListItem | null>(
+      null
+    )
 
-  const fetchVendor = async () => {
-    if (!id) return
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true)
 
-    setIsLoading(true)
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(null)
 
-    try {
-      const response = await fetch(`/api/vendors/${id}`, {
-        cache: "no-store",
-      })
-
-      const payload = await response.json()
-
-      if (!response.ok) {
-        setError(payload.error || "Unable to load vendor")
-        setVendor(null)
-      } else {
-        setVendor(payload.vendor as VendorListItem)
-        setError(null)
-      }
-    } catch (e: any) {
-      setError(e.message || "Unexpected error")
-      setVendor(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let isCancelled = false
-
-    const loadVendor = async () => {
+  const fetchVendor =
+    async () => {
       if (!id) {
-        if (!isCancelled) {
-          setVendor(null)
-          setIsLoading(false)
-        }
+        setVendor(null)
+        setIsLoading(false)
         return
       }
 
       setIsLoading(true)
 
       try {
-        const response = await fetch(`/api/vendors/${id}`, {
-          cache: "no-store",
-        })
+        const response =
+          await fetch(
+            `/api/vendors/${id}`,
+            {
+              cache: "no-store",
+            }
+          )
 
-        const payload = await response.json()
+        const payload =
+          await response.json()
 
         if (!response.ok) {
-          throw new Error(payload.error || "Unable to load vendor")
+          throw new Error(
+            payload.error ||
+              "Unable to load vendor"
+          )
         }
 
-        if (!isCancelled) {
-          setVendor(payload.vendor as VendorListItem)
-          setError(null)
-        }
-      } catch (e: any) {
-        if (!isCancelled) {
-          setError(e.message || "Unexpected error")
-          setVendor(null)
-        }
+        setVendor(
+          payload.vendor as VendorListItem
+        )
+
+        setError(null)
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unexpected error"
+        )
+
+        setVendor(null)
       } finally {
-        if (!isCancelled) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
+
+  useEffect(() => {
+    let isCancelled = false
+
+    const loadVendor =
+      async () => {
+        if (!id) {
+          if (!isCancelled) {
+            setVendor(null)
+            setIsLoading(false)
+          }
+
+          return
+        }
+
+        setIsLoading(true)
+
+        try {
+          const response =
+            await fetch(
+              `/api/vendors/${id}`,
+              {
+                cache: "no-store",
+              }
+            )
+
+          const payload =
+            await response.json()
+
+          if (!response.ok) {
+            throw new Error(
+              payload.error ||
+                "Unable to load vendor"
+            )
+          }
+
+          if (!isCancelled) {
+            setVendor(
+              payload.vendor as VendorListItem
+            )
+
+            setError(null)
+          }
+        } catch (error) {
+          if (!isCancelled) {
+            setError(
+              error instanceof Error
+                ? error.message
+                : "Unexpected error"
+            )
+
+            setVendor(null)
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false)
+          }
+        }
+      }
 
     loadVendor()
 
@@ -135,82 +195,164 @@ export function useVendors({
   sortBy?: string
   sortOrder?: "asc" | "desc"
 }) {
-  const [vendors, setVendors] = useState<VendorListItem[]>([])
-  const [count, setCount] = useState(0)
-  const [linesOfBusiness, setLinesOfBusiness] = useState<LineOfBusinessOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [
+    vendors,
+    setVendors,
+  ] = useState<
+    VendorListItem[]
+  >([])
+
+  const [
+    count,
+    setCount,
+  ] = useState(0)
+
+  const [
+    linesOfBusiness,
+    setLinesOfBusiness,
+  ] = useState<
+    LineOfBusinessOption[]
+  >([])
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true)
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(null)
 
   useEffect(() => {
     let isCancelled = false
 
-    const fetchVendors = async () => {
-      setIsLoading(true)
+    const fetchVendors =
+      async () => {
+        setIsLoading(true)
 
-      try {
-        const params = new URLSearchParams()
+        try {
+          const params =
+            new URLSearchParams()
 
-        if (status && status !== "all") {
-          params.set("status", status)
-        }
-
-        if (search) {
-          params.set("search", search)
-        }
-
-        if (lineOfBusinessId) {
-          params.set("lob", lineOfBusinessId)
-        }
-
-        if (vendorTier) {
-          params.set("tier", vendorTier)
-        }
-
-        if (grade) {
-          params.set("grade", grade)
-        }
-
-        params.set("page", String(page))
-        params.set("pageSize", String(pageSize))
-
-        if (sortBy) {
-          params.set("sortBy", sortBy)
-        }
-
-        params.set("sortOrder", sortOrder)
-
-        const response = await fetch(
-          `/api/vendors?${params.toString()}`,
-          {
-            cache: "no-store",
+          if (
+            status &&
+            status !== "all"
+          ) {
+            params.set(
+              "status",
+              status
+            )
           }
-        )
 
-        const payload = await response.json()
+          if (search) {
+            params.set(
+              "search",
+              search
+            )
+          }
 
-        if (!response.ok) {
-          throw new Error(
-            payload.error || "Unable to fetch vendors"
+          if (
+            lineOfBusinessId &&
+            lineOfBusinessId !==
+              "all"
+          ) {
+            params.set(
+              "lob",
+              lineOfBusinessId
+            )
+          }
+
+          if (
+            vendorTier &&
+            vendorTier !== "all"
+          ) {
+            params.set(
+              "tier",
+              vendorTier
+            )
+          }
+
+          if (
+            grade &&
+            grade !== "all"
+          ) {
+            params.set(
+              "grade",
+              grade
+            )
+          }
+
+          params.set(
+            "page",
+            String(page)
           )
-        }
 
-        if (!isCancelled) {
-          setVendors((payload.vendors || []) as VendorListItem[])
-          setCount(payload.count || 0)
-          setError(null)
-        }
-      } catch (e: any) {
-        if (!isCancelled) {
-          setError(e.message || "Unexpected error")
-          setVendors([])
-          setCount(0)
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false)
+          params.set(
+            "pageSize",
+            String(pageSize)
+          )
+
+          if (sortBy) {
+            params.set(
+              "sortBy",
+              sortBy
+            )
+          }
+
+          params.set(
+            "sortOrder",
+            sortOrder
+          )
+
+          const response =
+            await fetch(
+              `/api/vendors?${params.toString()}`,
+              {
+                cache: "no-store",
+              }
+            )
+
+          const payload =
+            await response.json()
+
+          if (!response.ok) {
+            throw new Error(
+              payload.error ||
+                "Unable to fetch vendors"
+            )
+          }
+
+          if (!isCancelled) {
+            setVendors(
+              (payload.vendors ||
+                []) as VendorListItem[]
+            )
+
+            setCount(
+              payload.count || 0
+            )
+
+            setError(null)
+          }
+        } catch (error) {
+          if (!isCancelled) {
+            setError(
+              error instanceof Error
+                ? error.message
+                : "Unexpected error"
+            )
+
+            setVendors([])
+            setCount(0)
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false)
+          }
         }
       }
-    }
 
     fetchVendors()
 
@@ -232,32 +374,44 @@ export function useVendors({
   useEffect(() => {
     let isCancelled = false
 
-    const fetchLinesOfBusiness = async () => {
-      try {
-        const response = await fetch("/api/lines-of-business", {
-          cache: "no-store",
-        })
+    const fetchLinesOfBusiness =
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "/api/lines-of-business",
+              {
+                cache: "no-store",
+              }
+            )
 
-        const payload = await response.json()
+          const payload =
+            await response.json()
 
-        if (!response.ok) {
-          throw new Error(
-            payload.error || "Unable to fetch lines of business"
-          )
-        }
+          if (!response.ok) {
+            throw new Error(
+              payload.error ||
+                "Unable to fetch lines of business"
+            )
+          }
 
-        if (!isCancelled) {
-          setLinesOfBusiness(
-            (payload.linesOfBusiness || []) as LineOfBusinessOption[]
-          )
-        }
-      } catch (e) {
-        if (!isCancelled) {
-          console.error("Unable to load lines of business:", e)
-          setLinesOfBusiness([])
+          if (!isCancelled) {
+            setLinesOfBusiness(
+              (payload.linesOfBusiness ||
+                []) as LineOfBusinessOption[]
+            )
+          }
+        } catch (error) {
+          if (!isCancelled) {
+            console.error(
+              "Unable to load lines of business:",
+              error
+            )
+
+            setLinesOfBusiness([])
+          }
         }
       }
-    }
 
     fetchLinesOfBusiness()
 

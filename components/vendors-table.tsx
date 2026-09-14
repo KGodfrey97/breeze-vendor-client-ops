@@ -47,10 +47,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-import type { VendorListItem } from "@/hooks/use-vendors"
-import { cn } from "@/lib/utils"
+import {
+  VENDOR_STATUS_LABELS,
+  VENDOR_STATUS_TONES,
+} from "@/lib/constants/vendor-status"
 
+import type { VendorListItem } from "@/hooks/use-vendors"
 import type { Column } from "@/hooks/use-vendors-table-columns"
+
+import { cn } from "@/lib/utils"
 
 interface VendorsTableProps {
   vendors: VendorListItem[]
@@ -66,7 +71,6 @@ interface VendorsTableProps {
     React.SetStateAction<Column[]>
   >
 }
-
 
 const VENDORS_TABLE_COLUMNS_STORAGE_KEY =
   "vendors-table-columns"
@@ -92,7 +96,7 @@ export const DEFAULT_VENDOR_COLUMNS: Column[] = [
   },
   {
     id: "grade",
-    label: "Grade",
+    label: "Health Grade",
     visible: true,
     sortKey: "grade",
   },
@@ -140,7 +144,10 @@ export const getInitialVendorColumns =
       const parsed = JSON.parse(
         stored
       ) as Array<
-        Pick<Column, "id" | "visible">
+        Pick<
+          Column,
+          "id" | "visible"
+        >
       >
 
       const parsedMap = new Map(
@@ -150,29 +157,37 @@ export const getInitialVendorColumns =
         ])
       )
 
-      const orderedColumns = parsed
-        .map((column) =>
-          DEFAULT_VENDOR_COLUMNS.find(
-            (defaultColumn) =>
-              defaultColumn.id === column.id
+      const orderedColumns =
+        parsed
+          .map((column) =>
+            DEFAULT_VENDOR_COLUMNS.find(
+              (defaultColumn) =>
+                defaultColumn.id ===
+                column.id
+            )
           )
-        )
-        .filter(
-          (column): column is Column =>
-            Boolean(column)
-        )
-        .map((column) => ({
-          ...column,
-          visible:
-            parsedMap.get(column.id) ??
-            column.visible,
-        }))
+          .filter(
+            (
+              column
+            ): column is Column =>
+              Boolean(column)
+          )
+          .map((column) => ({
+            ...column,
+            visible:
+              parsedMap.get(
+                column.id
+              ) ??
+              column.visible,
+          }))
 
       const missingColumns =
         DEFAULT_VENDOR_COLUMNS.filter(
           (column) =>
             !orderedColumns.some(
-              (orderedColumn) =>
+              (
+                orderedColumn
+              ) =>
                 orderedColumn.id ===
                 column.id
             )
@@ -218,9 +233,12 @@ function SortableHeader({
 
   const style = {
     transform:
-      CSS.Transform.toString(transform),
+      CSS.Transform.toString(
+        transform
+      ),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity:
+      isDragging ? 0.5 : 1,
   }
 
   if (!column.visible) {
@@ -230,13 +248,14 @@ function SortableHeader({
   const isSorted =
     column.sortKey === sortBy
 
-  const SortIcon = !column.sortKey
-    ? null
-    : isSorted
-    ? sortOrder === "asc"
-      ? ArrowUp
-      : ArrowDown
-    : null
+  const SortIcon =
+    !column.sortKey
+      ? null
+      : isSorted
+      ? sortOrder === "asc"
+        ? ArrowUp
+        : ArrowDown
+      : null
 
   return (
     <TableHead
@@ -248,7 +267,7 @@ function SortableHeader({
       <div className="flex items-center gap-2">
         <div
           {...listeners}
-          className="cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity p-1"
+          className="cursor-grab p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
@@ -261,9 +280,11 @@ function SortableHeader({
                 column.sortKey!
               )
             }
-            className="inline-flex items-center gap-1 select-none text-left transition-colors hover:text-foreground"
+            className="inline-flex select-none items-center gap-1 text-left transition-colors hover:text-foreground"
           >
-            <span>{children}</span>
+            <span>
+              {children}
+            </span>
 
             {SortIcon ? (
               <SortIcon className="h-4 w-4 text-muted-foreground" />
@@ -301,7 +322,10 @@ export function VendorsTable({
   const [
     loadingVendorId,
     setLoadingVendorId,
-  ] = useState<string | null>(null)
+  ] =
+    useState<string | null>(
+      null
+    )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -309,6 +333,7 @@ export function VendorsTable({
         distance: 8,
       },
     }),
+
     useSensor(KeyboardSensor, {
       coordinateGetter:
         sortableKeyboardCoordinates,
@@ -318,7 +343,10 @@ export function VendorsTable({
   const handleDragEnd = (
     event: DragEndEvent
   ) => {
-    const { active, over } = event
+    const {
+      active,
+      over,
+    } = event
 
     if (
       active.id !== over?.id
@@ -327,13 +355,15 @@ export function VendorsTable({
         const oldIndex =
           items.findIndex(
             (item) =>
-              item.id === active.id
+              item.id ===
+              active.id
           )
 
         const newIndex =
           items.findIndex(
             (item) =>
-              item.id === over?.id
+              item.id ===
+              over?.id
           )
 
         return arrayMove(
@@ -348,17 +378,26 @@ export function VendorsTable({
   const parseDateString = (
     dateString: string | null
   ) => {
-    if (!dateString) return null
+    if (!dateString) {
+      return null
+    }
 
     const normalized =
       dateString.slice(0, 10)
 
-    const [year, month, day] =
-      normalized
-        .split("-")
-        .map(Number)
+    const [
+      year,
+      month,
+      day,
+    ] = normalized
+      .split("-")
+      .map(Number)
 
-    if (!year || !month || !day) {
+    if (
+      !year ||
+      !month ||
+      !day
+    ) {
       return null
     }
 
@@ -373,9 +412,13 @@ export function VendorsTable({
     dateString: string | null
   ) => {
     const date =
-      parseDateString(dateString)
+      parseDateString(
+        dateString
+      )
 
-    if (!date) return "—"
+    if (!date) {
+      return "—"
+    }
 
     return date.toLocaleDateString(
       "en-US",
@@ -391,12 +434,23 @@ export function VendorsTable({
     renewalDate: string | null
   ) => {
     const date =
-      parseDateString(renewalDate)
+      parseDateString(
+        renewalDate
+      )
 
-    if (!date) return "none"
+    if (!date) {
+      return "none"
+    }
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today =
+      new Date()
+
+    today.setHours(
+      0,
+      0,
+      0,
+      0
+    )
 
     const diffInMs =
       date.getTime() -
@@ -405,14 +459,21 @@ export function VendorsTable({
     const diffInDays =
       Math.ceil(
         diffInMs /
-          (1000 * 60 * 60 * 24)
+          (
+            1000 *
+            60 *
+            60 *
+            24
+          )
       )
 
     if (diffInDays < 0) {
       return "expired"
     }
 
-    if (diffInDays <= 30) {
+    if (
+      diffInDays <= 30
+    ) {
       return "approaching"
     }
 
@@ -423,12 +484,23 @@ export function VendorsTable({
     renewalDate: string | null
   ) => {
     const date =
-      parseDateString(renewalDate)
+      parseDateString(
+        renewalDate
+      )
 
-    if (!date) return null
+    if (!date) {
+      return null
+    }
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today =
+      new Date()
+
+    today.setHours(
+      0,
+      0,
+      0,
+      0
+    )
 
     const diffInMs =
       date.getTime() -
@@ -436,7 +508,12 @@ export function VendorsTable({
 
     return Math.ceil(
       diffInMs /
-        (1000 * 60 * 60 * 24)
+        (
+          1000 *
+          60 *
+          60 *
+          24
+        )
     )
   }
 
@@ -459,21 +536,29 @@ export function VendorsTable({
     ) {
       return {
         urgency,
-        label: "No renewal set",
+        label:
+          "No renewal set",
         helper:
           "Add a contract renewal date",
-        icon: CalendarClock,
+        icon:
+          CalendarClock,
         tone:
           "text-muted-foreground border-border bg-muted",
       }
     }
 
-    if (urgency === "expired") {
+    if (
+      urgency ===
+      "expired"
+    ) {
       const overdueBy =
-        Math.abs(daysUntil)
+        Math.abs(
+          daysUntil
+        )
 
       return {
         urgency,
+
         label:
           overdueBy === 0
             ? "Renews today"
@@ -482,10 +567,15 @@ export function VendorsTable({
                   ? ""
                   : "s"
               } past renewal`,
-        helper: `Renewal date was ${formatDate(
-          renewalDate
-        )}`,
-        icon: CircleAlert,
+
+        helper:
+          `Renewal date was ${formatDate(
+            renewalDate
+          )}`,
+
+        icon:
+          CircleAlert,
+
         tone:
           "text-destructive border-destructive/20 bg-destructive/10",
       }
@@ -497,6 +587,7 @@ export function VendorsTable({
     ) {
       return {
         urgency,
+
         label:
           daysUntil === 0
             ? "Renews today"
@@ -505,10 +596,14 @@ export function VendorsTable({
                   ? ""
                   : "s"
               }`,
-        helper: `Renewal on ${formatDate(
-          renewalDate
-        )}`,
+
+        helper:
+          `Renewal on ${formatDate(
+            renewalDate
+          )}`,
+
         icon: Clock3,
+
         tone:
           "text-warning border-warning/20 bg-warning/10",
       }
@@ -517,48 +612,51 @@ export function VendorsTable({
     return {
       urgency,
       label: "On track",
-      helper: `Renews ${formatDate(
-        renewalDate
-      )}`,
-      icon: CalendarClock,
+      helper:
+        `Renews ${formatDate(
+          renewalDate
+        )}`,
+      icon:
+        CalendarClock,
       tone:
         "text-primary border-primary/20 bg-primary/10",
     }
   }
 
-  const formatStatus = (
-    value: string
-  ) =>
-    value
-      .split("_")
-      .map(
-        (word) =>
-          word
-            .charAt(0)
-            .toUpperCase() +
-          word.slice(1)
-      )
-      .join(" ")
-
   const getStatusTone = (
     status: string
   ) => {
-    switch (status) {
-      case "active":
-        return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+    return (
+      VENDOR_STATUS_TONES[
+        status as keyof typeof VENDOR_STATUS_TONES
+      ] ??
+      "bg-muted text-muted-foreground"
+    )
+  }
 
-      case "onboarding":
-        return "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-
-      case "under_review":
-        return "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-
-      case "inactive":
-        return "bg-muted text-muted-foreground"
-
-      default:
-        return "bg-muted text-muted-foreground"
+  const getHealthGradeTone = (
+    grade: string | null
+  ) => {
+    if (grade === "A") {
+      return "border-primary/30 bg-primary/10 text-primary"
     }
+
+    if (grade === "B") {
+      return "border-primary/20 bg-primary/5 text-primary"
+    }
+
+    if (grade === "C") {
+      return "border-warning/30 bg-warning/10 text-warning"
+    }
+
+    if (
+      grade === "D" ||
+      grade === "F"
+    ) {
+      return "border-destructive/30 bg-destructive/10 text-destructive"
+    }
+
+    return "border-border bg-muted text-muted-foreground"
   }
 
   const renderCell = (
@@ -575,6 +673,9 @@ export function VendorsTable({
       loadingVendorId ===
         vendor.id
 
+    const status =
+      vendor.status as keyof typeof VENDOR_STATUS_LABELS
+
     switch (columnId) {
       case "name":
         return (
@@ -585,13 +686,15 @@ export function VendorsTable({
                 style={{
                   backgroundColor:
                     vendor.color ||
-                    "#64748b",
+                    "hsl(var(--muted-foreground))",
                 }}
               />
 
               <div>
                 <div className="font-semibold text-foreground">
-                  {vendor.name}
+                  {
+                    vendor.name
+                  }
                 </div>
 
                 {vendor.vendor_code ? (
@@ -622,22 +725,47 @@ export function VendorsTable({
           </TableCell>
         )
 
-      case "grade":
+      case "grade": {
+        const grade =
+          vendor.health_grade
+
+        const gradeTone =
+          getHealthGradeTone(
+            grade
+          )
+
         return (
           <TableCell className="whitespace-nowrap">
-            {vendor.grade ? (
-              <div className="flex justify-center">
-                <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-xl border border-border bg-card px-2 font-bold text-foreground">
-                  {vendor.grade}
+            <div className="flex justify-center">
+              {grade ? (
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex h-9 min-w-9 items-center justify-center rounded-xl border px-2 font-bold",
+                      gradeTone
+                    )}
+                  >
+                    {grade}
+                  </span>
+
+                  {vendor.health_score !==
+                    null ? (
+                    <span className="text-xs text-muted-foreground">
+                      {vendor.health_score.toFixed(
+                        1
+                      )}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  No data
                 </span>
-              </div>
-            ) : (
-              <div className="text-center text-muted-foreground">
-                —
-              </div>
-            )}
+              )}
+            </div>
           </TableCell>
         )
+      }
 
       case "status":
         return (
@@ -651,9 +779,10 @@ export function VendorsTable({
                   )
                 )}
               >
-                {formatStatus(
-                  vendor.status
-                )}
+                {VENDOR_STATUS_LABELS[
+                  status
+                ] ??
+                  vendor.status}
               </span>
             </div>
           </TableCell>
@@ -720,11 +849,13 @@ export function VendorsTable({
                   vendor.id
                 )
 
-                startTransition(() => {
-                  router.push(
-                    `/vendors/view/${vendor.id}`
-                  )
-                })
+                startTransition(
+                  () => {
+                    router.push(
+                      `/vendors/view/${vendor.id}`
+                    )
+                  }
+                )
               }}
             >
               {isLoadingVendor ? (
@@ -743,7 +874,9 @@ export function VendorsTable({
         )
 
       default:
-        return <TableCell />
+        return (
+          <TableCell />
+        )
     }
   }
 
@@ -756,7 +889,6 @@ export function VendorsTable({
   return (
     <div className="space-y-4">
       <div className="app-surface relative overflow-hidden">
-
         <DndContext
           sensors={sensors}
           collisionDetection={
@@ -769,7 +901,6 @@ export function VendorsTable({
           <Table>
             <TableHeader>
               <TableRow className="border-border bg-muted/80">
-
                 <SortableContext
                   items={columns.map(
                     (column) =>
@@ -805,7 +936,6 @@ export function VendorsTable({
                     )
                   )}
                 </SortableContext>
-
               </TableRow>
             </TableHeader>
 
@@ -885,11 +1015,13 @@ export function VendorsTable({
       ) : null}
 
       <div className="text-center text-sm text-muted-foreground">
-        Showing {vendors.length} vendor
+        Showing{" "}
+        {vendors.length} vendor
         {vendors.length === 1
           ? ""
           : "s"}{" "}
-        out of {totalCount} total vendor
+        out of{" "}
+        {totalCount} total vendor
         {totalCount === 1
           ? ""
           : "s"}.

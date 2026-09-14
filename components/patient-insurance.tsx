@@ -20,7 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type { Database } from "@/lib/db-types"
 import { cn } from "@/lib/utils"
 import { FileText, Pencil, Plus, Trash2, ChevronDown } from "lucide-react"
-import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/constants/insuranceColors"
+import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/lib/constants/insuranceColors"
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"]
 type PatientInsurance = Database["public"]["Tables"]["patient_insurance"]["Row"]

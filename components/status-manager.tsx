@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { CheckCircle2, Clock, XCircle, AlertCircle, Activity } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { attributeColors } from "@/constants/attributesColors"
+import { attributeColors } from "@/lib/constants/attributesColors"
 import { DatePicker } from "@/components/ui/date-picker"
 
 interface StatusManagerProps {

@@ -27,7 +27,7 @@ export function VendorsClientPage() {
   const search = searchParams.get("search") || undefined
   const lineOfBusinessId = searchParams.get("lob") || undefined
   const vendorTier = searchParams.get("tier") || undefined
-  const grade = searchParams.get("grade") || undefined
+  const healthGrade = searchParams.get("grade") || undefined
 
   // ----------------------------------------------------
   // Table state
@@ -53,14 +53,14 @@ export function VendorsClientPage() {
         search,
         lineOfBusinessId,
         vendorTier,
-        grade,
+        healthGrade,
       }),
     [
       status,
       search,
       lineOfBusinessId,
       vendorTier,
-      grade,
+      healthGrade,
     ]
   )
 
@@ -79,7 +79,7 @@ export function VendorsClientPage() {
     search,
     lineOfBusinessId,
     vendorTier,
-    grade,
+    grade: healthGrade,
     page: currentPage,
     pageSize: 20,
     sortBy,
@@ -240,18 +240,7 @@ export function VendorsClientPage() {
   return (
     <div className="app-page">
 
-      {/* Navigation Loading */}
 
-      {isPending &&
-      pendingNavigationLabel ? (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
-
-          <span>
-            {pendingNavigationLabel}
-          </span>
-        </div>
-      ) : null}
 
       <Card className="app-surface">
         <CardContent className="pt-6">

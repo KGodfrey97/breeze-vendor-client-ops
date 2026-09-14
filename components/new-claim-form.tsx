@@ -29,9 +29,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { MedicalFormUpload } from "@/components/medical-form-upload"
-import { DENIAL_REASON_GROUPS } from "@/constants/denial-reasons"
+import { DENIAL_REASON_GROUPS } from "@/lib/constants/denial-reasons"
 import { cn } from "@/lib/utils"
-import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/constants/insuranceColors"
+import { insurancePriorityLabels, insurancePriorityBadgeClasses } from "@/lib/constants/insuranceColors"
 
 const claimFormSchema = z.object({
   // Patient Information
