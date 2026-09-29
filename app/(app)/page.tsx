@@ -10,6 +10,7 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   Gauge,
@@ -38,6 +39,8 @@ import {
 
 import { DashboardBudgetStatusChart } from "@/components/dashboard-budget-status-chart"
 import { DashboardVendorHealthChart } from "@/components/dashboard-vendor-health-chart"
+import { DashboardUpcomingMeetings } from "@/components/dashboard-upcoming-meetings"
+import { DashboardUpcomingActions } from "@/components/dashboard-upcoming-actions"
 
 type GradeDistribution = {
   A: number
@@ -64,6 +67,12 @@ type DashboardData = {
     noData: number
   }
 
+  budgetByVendor: {
+    vendorId: string
+    vendorName: string
+    budgetAmount: number
+  }[]
+
   health: {
     averageScore: number | null
     gradeDistribution: GradeDistribution
@@ -75,6 +84,7 @@ type DashboardData = {
     met: number
     missed: number
     complianceRate: number | null
+    lookbackMonths: number
   }
 
   renewals: Array<{
@@ -84,6 +94,32 @@ type DashboardData = {
     contractName: string
     renewalDate: string
   }>
+
+  upcomingMeetings: {
+    meetingId: string
+    vendorId: string
+    vendorName: string
+    title: string
+    meetingType: string | null
+    scheduledAt: string
+    durationMinutes: number | null
+    location: string | null
+    meetingLink: string | null
+  }[]
+
+  upcomingActions: {
+    id: string
+    vendorId: string
+    vendorName: string
+    meetingId: string
+    title: string
+    ownerName: string | null
+    dueDate: string | null
+    status:
+      | "open"
+      | "in_progress"
+    meetingTitle: string
+  }[]
 }
 
 export default function DashboardPage() {
@@ -331,6 +367,9 @@ export default function DashboardPage() {
   const budget =
     dashboard?.budgetStatus
 
+  const budgetByVendor =
+    dashboard?.budgetByVendor || []
+
   const health =
     dashboard?.health
 
@@ -566,7 +605,7 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Overall vendor health based on performance, budget, and contracts
+              Overall vendor health based on KPI / SLA performance and budget
             </CardDescription>
           </CardHeader>
 
@@ -638,7 +677,7 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Current-year vendor budget health
+              Current-year budget allocation by vendor
             </CardDescription>
           </CardHeader>
 
@@ -669,15 +708,7 @@ export default function DashboardPage() {
                 </div>
 
                 <DashboardBudgetStatusChart
-                  withinBudget={
-                    budget?.withinBudget || 0
-                  }
-                  overBudget={
-                    budget?.overBudget || 0
-                  }
-                  noData={
-                    budget?.noData || 0
-                  }
+                  vendors={budgetByVendor}
                 />
 
                 <div className="border-t pt-4">
@@ -713,13 +744,71 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+
+        {/* Upcoming Meetings */}
+
+        <Card className="app-surface">
+          <CardHeader>
+            <CardTitle>
+              Upcoming Meetings
+            </CardTitle>
+
+            <CardDescription>
+              Scheduled vendor meetings coming up next
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <DashboardUpcomingMeetings
+                meetings={
+                  dashboard?.upcomingMeetings ||
+                  []
+                }
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Open Actions */}
+
+        <Card className="app-surface">
+          <CardHeader>
+            <CardTitle>
+              Open Actions
+            </CardTitle>
+
+            <CardDescription>
+              Follow-up work requiring attention
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <DashboardUpcomingActions
+                actions={
+                  dashboard?.upcomingActions ||
+                  []
+                }
+              />
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+
       {/* Renewals + Performance */}
 
-      <div className="grid gap-4 lg:grid-cols-7">
+      <div className="grid gap-4 lg:grid-cols-2">
 
         {/* Renewals */}
 
-        <Card className="app-surface lg:col-span-4">
+        <Card className="app-surface">
           <CardHeader>
             <CardTitle>
               Upcoming Renewals
@@ -817,9 +906,9 @@ export default function DashboardPage() {
           </CardFooter>
         </Card>
 
-        {/* KPI / SLA Performance */}
+        {/* Performance */}
 
-        <Card className="app-surface lg:col-span-3">
+        <Card className="app-surface">
           <CardHeader>
             <CardTitle>
               KPI / SLA Performance
@@ -885,7 +974,7 @@ export default function DashboardPage() {
 
                   <div className="rounded-lg border p-3 text-center">
                     <p className="text-xs text-muted-foreground">
-                      Measured
+                      Results
                     </p>
 
                     <p className="mt-1 text-xl font-semibold">
@@ -911,19 +1000,15 @@ export default function DashboardPage() {
 
                   <div className="mt-2 flex justify-between text-sm">
                     <span className="text-muted-foreground">
-                      Awaiting Results
+                      Result Window
                     </span>
 
                     <span className="font-medium">
-                      {Math.max(
-                        (performance
-                          ?.totalMetrics ||
-                          0) -
-                          (performance
-                            ?.measuredMetrics ||
-                            0),
-                        0
-                      )}
+                      Last{" "}
+                      {performance
+                        ?.lookbackMonths ||
+                        0}{" "}
+                      months
                     </span>
                   </div>
                 </div>

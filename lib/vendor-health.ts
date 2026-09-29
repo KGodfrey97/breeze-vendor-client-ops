@@ -1,38 +1,93 @@
 import "server-only"
 
 import { query } from "@/lib/db"
+import { VENDOR_PERFORMANCE_LOOKBACK_MONTHS } from "@/lib/vendor-performance"
+
+type RelationshipRatingRow = {
+  responsiveness: number | null
+  adaptability: number | null
+  compliance: number | null
+  relationship: number | null
+}
 
 type VendorHealthInputRow = {
   performance_score: string | null
-  budget_score: string | null
 }
 
 type RecalculateVendorHealthResult = {
   score: number | null
-  grade: "A" | "B" | "C" | "D" | "F" | null
+  grade:
+    | "A"
+    | "B"
+    | "C"
+    | "D"
+    | "F"
+    | null
 }
+
+type HealthComponent = {
+  score: number | null
+  weight: number
+}
+
+const HEALTH_WEIGHTS = {
+  performance: 72,
+  responsiveness: 7,
+  adaptability: 7,
+  compliance: 7,
+  relationship: 7,
+} as const
 
 function getHealthGrade(
   score: number | null
 ): RecalculateVendorHealthResult["grade"] {
-  if (score === null) return null
+  if (score === null) {
+    return null
+  }
 
-  if (score >= 90) return "A"
-  if (score >= 80) return "B"
-  if (score >= 70) return "C"
-  if (score >= 60) return "D"
+  if (score >= 90) {
+    return "A"
+  }
+
+  if (score >= 80) {
+    return "B"
+  }
+
+  if (score >= 70) {
+    return "C"
+  }
+
+  if (score >= 60) {
+    return "D"
+  }
 
   return "F"
+}
+
+function starRatingToScore(
+  rating: number | null
+) {
+  if (
+    rating === null ||
+    rating === undefined
+  ) {
+    return null
+  }
+
+  return (
+    rating / 5
+  ) * 100
 }
 
 export async function recalculateVendorHealth(
   vendorId: string,
   organizationId: string
 ): Promise<RecalculateVendorHealthResult> {
-  const currentYear =
-    new Date().getFullYear()
+  // --------------------------------------------------
+  // KPI / SLA performance
+  // --------------------------------------------------
 
-  const result =
+  const performanceResult =
     await query<VendorHealthInputRow>(
       `
       WITH metric_score AS (
@@ -40,7 +95,10 @@ export async function recalculateVendorHealth(
           CASE
             WHEN SUM(
               CASE
-                WHEN latest.status IN ('met', 'missed')
+                WHEN result.status IN (
+                  'met',
+                  'missed'
+                )
                 THEN vm.weight
                 ELSE 0
               END
@@ -49,7 +107,7 @@ export async function recalculateVendorHealth(
             THEN (
               SUM(
                 CASE
-                  WHEN latest.status = 'met'
+                  WHEN result.status = 'met'
                   THEN vm.weight
                   ELSE 0
                 END
@@ -57,7 +115,10 @@ export async function recalculateVendorHealth(
               /
               SUM(
                 CASE
-                  WHEN latest.status IN ('met', 'missed')
+                  WHEN result.status IN (
+                    'met',
+                    'missed'
+                  )
                   THEN vm.weight
                   ELSE 0
                 END
@@ -69,177 +130,236 @@ export async function recalculateVendorHealth(
 
         FROM vendor_metrics vm
 
-        LEFT JOIN LATERAL (
-          SELECT
-            r.status
-
-          FROM vendor_metric_results r
-
-          WHERE r.metric_id = vm.id
-            AND r.vendor_id = vm.vendor_id
-            AND r.organization_id = vm.organization_id
-
-          ORDER BY
-            r.period_end DESC,
-            r.created_at DESC
-
-          LIMIT 1
-        ) latest ON TRUE
+        LEFT JOIN vendor_metric_results result
+          ON result.metric_id = vm.id
+          AND result.vendor_id = vm.vendor_id
+          AND result.organization_id = vm.organization_id
+          AND result.period_end >= (
+            CURRENT_DATE -
+            ($3::int * INTERVAL '1 month')
+          )
+          AND result.period_end <= CURRENT_DATE
 
         WHERE vm.vendor_id = $1
           AND vm.organization_id = $2
           AND vm.is_active = TRUE
-      ),
-
-      budget_score AS (
-        SELECT
-          CASE
-            WHEN vb.forecast_amount IS NULL
-              THEN NULL
-
-            WHEN vb.budget_amount <= 0
-              AND vb.forecast_amount <= 0
-              THEN 100
-
-            WHEN vb.budget_amount <= 0
-              THEN 0
-
-            WHEN vb.forecast_amount <= vb.budget_amount
-              THEN 100
-
-            WHEN (
-              (
-                vb.forecast_amount -
-                vb.budget_amount
-              ) / vb.budget_amount
-            ) * 100 <= 5
-              THEN 80
-
-            WHEN (
-              (
-                vb.forecast_amount -
-                vb.budget_amount
-              ) / vb.budget_amount
-            ) * 100 <= 10
-              THEN 60
-
-            WHEN (
-              (
-                vb.forecast_amount -
-                vb.budget_amount
-              ) / vb.budget_amount
-            ) * 100 <= 20
-              THEN 30
-
-            ELSE 0
-          END AS budget_score
-
-        FROM vendor_budgets vb
-
-        WHERE vb.vendor_id = $1
-          AND vb.organization_id = $2
-          AND vb.budget_year = $3
-
-        LIMIT 1
       )
 
       SELECT
-        ms.performance_score::text,
-        bs.budget_score::text
+        performance_score::text
 
-      FROM metric_score ms
-
-      LEFT JOIN budget_score bs
-        ON TRUE
+      FROM metric_score
       `,
       [
         vendorId,
         organizationId,
-        currentYear,
+        VENDOR_PERFORMANCE_LOOKBACK_MONTHS,
       ]
     )
 
-  const row =
-    result.rows[0]
+  // --------------------------------------------------
+  // Relationship ratings
+  // --------------------------------------------------
+
+  const ratingsResult =
+    await query<RelationshipRatingRow>(
+      `
+      SELECT
+        responsiveness,
+        adaptability,
+        compliance,
+        relationship
+
+      FROM vendor_relationship_ratings
+
+      WHERE organization_id = $1
+        AND vendor_id = $2
+
+      LIMIT 1
+      `,
+      [
+        organizationId,
+        vendorId,
+      ]
+    )
+
+  // --------------------------------------------------
+  // Convert data to component scores
+  // --------------------------------------------------
+
+  const performanceRow =
+    performanceResult.rows[0]
 
   const performanceScore =
-    row?.performance_score !== null &&
-    row?.performance_score !== undefined
+    performanceRow
+      ?.performance_score !== null &&
+    performanceRow
+      ?.performance_score !== undefined
       ? Number(
-          row.performance_score
+          performanceRow.performance_score
         )
       : null
 
-  const budgetScore =
-    row?.budget_score !== null &&
-    row?.budget_score !== undefined
-      ? Number(
-          row.budget_score
-        )
-      : null
+  const ratings =
+    ratingsResult.rows[0]
 
-  const components = [
-    {
-      score: performanceScore,
-      weight: 70,
-    },
-    {
-      score: budgetScore,
-      weight: 30,
-    },
-  ].filter(
-    (
-      component
-    ): component is {
-      score: number
-      weight: number
-    } =>
-      component.score !== null
-  )
+  const responsivenessScore =
+    starRatingToScore(
+      ratings?.responsiveness ??
+        null
+    )
 
-  let healthScore: number | null =
-    null
+  const adaptabilityScore =
+    starRatingToScore(
+      ratings?.adaptability ??
+        null
+    )
+
+  const complianceScore =
+    starRatingToScore(
+      ratings?.compliance ??
+        null
+    )
+
+  const relationshipScore =
+    starRatingToScore(
+      ratings?.relationship ??
+        null
+    )
+
+  // --------------------------------------------------
+  // Available health components
+  // --------------------------------------------------
+
+  const components: HealthComponent[] = [
+    {
+      score:
+        performanceScore,
+
+      weight:
+        HEALTH_WEIGHTS.performance,
+    },
+
+    {
+      score:
+        responsivenessScore,
+
+      weight:
+        HEALTH_WEIGHTS.responsiveness,
+    },
+
+    {
+      score:
+        adaptabilityScore,
+
+      weight:
+        HEALTH_WEIGHTS.adaptability,
+    },
+
+    {
+      score:
+        complianceScore,
+
+      weight:
+        HEALTH_WEIGHTS.compliance,
+    },
+
+    {
+      score:
+        relationshipScore,
+
+      weight:
+        HEALTH_WEIGHTS.relationship,
+    },
+  ]
+
+  const availableComponents =
+    components.filter(
+      (
+        component
+      ): component is {
+        score: number
+        weight: number
+      } =>
+        component.score !== null
+    )
+
+  // --------------------------------------------------
+  // No available health data
+  // --------------------------------------------------
 
   if (
-    components.length > 0
+    availableComponents.length === 0
   ) {
-    const availableWeight =
-      components.reduce(
-        (
-          total,
-          component
-        ) =>
-          total +
-          component.weight,
-        0
-      )
+    await query(
+      `
+      UPDATE vendors
 
-    const weightedTotal =
-      components.reduce(
-        (
-          total,
-          component
-        ) =>
-          total +
-          component.score *
-            component.weight,
-        0
-      )
+      SET
+        health_score = NULL,
+        health_grade = NULL,
+        health_calculated_at = NOW()
 
-    healthScore =
-      Math.round(
-        (
-          weightedTotal /
-          availableWeight
-        ) *
-          100
-      ) / 100
+      WHERE id = $1
+        AND organization_id = $2
+      `,
+      [
+        vendorId,
+        organizationId,
+      ]
+    )
+
+    return {
+      score: null,
+      grade: null,
+    }
   }
+
+  // --------------------------------------------------
+  // Normalize based on available components
+  // --------------------------------------------------
+
+  const availableWeight =
+    availableComponents.reduce(
+      (
+        total,
+        component
+      ) =>
+        total +
+        component.weight,
+      0
+    )
+
+
+  const weightedScore =
+    availableComponents.reduce(
+      (
+        total,
+        component
+      ) =>
+        total +
+        component.score *
+          component.weight,
+      0
+    )
+
+  const healthScore =
+    Math.round(
+      (
+        weightedScore /
+        availableWeight
+      ) *
+        100
+    ) / 100
 
   const healthGrade =
     getHealthGrade(
       healthScore
     )
+
+  // --------------------------------------------------
+  // Cache health on vendor
+  // --------------------------------------------------
 
   await query(
     `
@@ -262,7 +382,10 @@ export async function recalculateVendorHealth(
   )
 
   return {
-    score: healthScore,
-    grade: healthGrade,
+    score:
+      healthScore,
+
+    grade:
+      healthGrade,
   }
 }

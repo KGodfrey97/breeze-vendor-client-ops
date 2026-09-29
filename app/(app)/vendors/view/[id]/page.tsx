@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { useVendor } from "@/hooks/use-vendors"
 
@@ -27,6 +28,7 @@ import { VendorBudget } from "@/components/vendor-budget"
 import { VendorPerformance } from "@/components/vendor-performance"
 import { VendorHealth } from "@/components/vendor-health"
 import { VendorMeetings } from "@/components/vendor-meetings"
+import { VendorRelationshipRatings } from "@/components/vendor-relationship-ratings"
 
 export default function VendorDetailsPage() {
   const params = useParams()
@@ -311,322 +313,310 @@ export default function VendorDetailsPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Tabs defaultValue="overview" className="mt-6 space-y-6">
+          <TabsList className="h-auto flex-wrap justify-start rounded-lg border border-border bg-card p-1">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="financials">Financials</TabsTrigger>
+            <TabsTrigger value="contacts">Contacts</TabsTrigger>
+            <TabsTrigger value="contracts">Contracts</TabsTrigger>
+            <TabsTrigger value="meetings">Meetings</TabsTrigger>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="health">Health & Ratings</TabsTrigger>
+          </TabsList>
 
-          {/* Main column */}
-          <div className="space-y-6 lg:col-span-2">
+          <TabsContent value="overview" className="mt-0">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)]">
+              <div className="space-y-6">
+                <InfoCard
+                  title="Vendor Information"
+                  icon={Building2}
+                  action={
+                    editingVendorInfo ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingVendorInfo(false)
 
-            {/* Vendor Information */}
-            <InfoCard
-              title="Vendor Information"
-              icon={Building2}
-              action={
-                editingVendorInfo ? (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditingVendorInfo(false)
+                            setVendorForm({
+                              name: vendor.name || "",
+                              vendorCode: vendor.vendor_code || "",
+                              lineOfBusinessId: vendor.line_of_business_id || "",
+                              vendorTier: vendor.vendor_tier || "",
+                              status: vendor.status || "",
+                            })
+                          }}
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Cancel
+                        </Button>
 
-                        setVendorForm({
-                          name: vendor.name || "",
-                          vendorCode: vendor.vendor_code || "",
-                          lineOfBusinessId: vendor.line_of_business_id || "",
-                          vendorTier: vendor.vendor_tier || "",
-                          status: vendor.status || "",
-                        })
-                      }}
-                    >
-                      <X className="mr-2 h-4 w-4" />
-                      Cancel
-                    </Button>
+                        <Button
+                          size="sm"
+                          onClick={saveVendorInfo}
+                        >
+                          <Check className="mr-2 h-4 w-4" />
+                          Save
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingVendorInfo(true)}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
+                    )
+                  }
+                >
+                  {editingVendorInfo ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Vendor Name</Label>
+                        <Input
+                          value={vendorForm.name}
+                          onChange={(e) =>
+                            setVendorForm({
+                              ...vendorForm,
+                              name: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
 
-                    <Button
-                      size="sm"
-                      onClick={saveVendorInfo}
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      Save
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingVendorInfo(true)}
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                )
-              }
-            >
-              {editingVendorInfo ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vendor Name</Label>
-                    <Input
-                      value={vendorForm.name}
-                      onChange={(e) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          name: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Vendor Code</Label>
+                        <Input
+                          value={vendorForm.vendorCode}
+                          onChange={(e) =>
+                            setVendorForm({
+                              ...vendorForm,
+                              vendorCode: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label>Vendor Code</Label>
-                    <Input
-                      value={vendorForm.vendorCode}
-                      onChange={(e) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          vendorCode: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Line of Business</Label>
+                        <Select
+                          value={vendorForm.lineOfBusinessId}
+                          onValueChange={(value) =>
+                            setVendorForm({
+                              ...vendorForm,
+                              lineOfBusinessId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select line of business" />
+                          </SelectTrigger>
 
-                  <div className="space-y-2">
-                    <Label>Line of Business</Label>
-                    <Select
-                      value={vendorForm.lineOfBusinessId}
-                      onValueChange={(value) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          lineOfBusinessId: value,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select line of business" />
-                      </SelectTrigger>
+                          <SelectContent>
+                            {linesOfBusiness.map((lob) => (
+                              <SelectItem key={lob.id} value={lob.id}>
+                                {lob.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                      <SelectContent>
-                        {linesOfBusiness.map((lob) => (
-                          <SelectItem key={lob.id} value={lob.id}>
-                            {lob.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Vendor Tier</Label>
+                        <Select
+                          value={vendorForm.vendorTier}
+                          onValueChange={(value) =>
+                            setVendorForm({
+                              ...vendorForm,
+                              vendorTier: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select tier" />
+                          </SelectTrigger>
 
-                  <div className="space-y-2">
-                    <Label>Vendor Tier</Label>
-                    <Select
-                      value={vendorForm.vendorTier}
-                      onValueChange={(value) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          vendorTier: value,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select tier" />
-                      </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Tier 1">Tier 1</SelectItem>
+                            <SelectItem value="Tier 2">Tier 2</SelectItem>
+                            <SelectItem value="Tier 3">Tier 3</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                      <SelectContent>
-                        <SelectItem value="Tier 1">Tier 1</SelectItem>
-                        <SelectItem value="Tier 2">Tier 2</SelectItem>
-                        <SelectItem value="Tier 3">Tier 3</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select
+                          value={vendorForm.status}
+                          onValueChange={(value) =>
+                            setVendorForm({
+                              ...vendorForm,
+                              status: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
 
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select
-                      value={vendorForm.status}
-                      onValueChange={(value) =>
-                        setVendorForm({
-                          ...vendorForm,
-                          status: value,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-
-                      <SelectContent>
-                        <SelectItem value="onboarding">Onboarding</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="under_review">Under Review</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              ) : (
-                <InfoGrid>
-                  <InfoField label="Vendor Name" value={vendor.name} />
-                  <InfoField label="Vendor Code" value={vendor.vendor_code} />
-                  <InfoField label="Line of Business" value={vendor.line_of_business} />
-                  <InfoField label="Vendor Tier" value={vendor.vendor_tier} />
-                  <InfoField label="Status" value={formatStatus(vendor.status)} />
-                </InfoGrid>
-              )}
-            </InfoCard>
-
-            {/* Vendor Description */}
-            <InfoCard
-              title="Vendor Description"
-              icon={FileText}
-              action={
-                editingDescription ? (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditingDescription(false)
-
-                        setDescriptionForm({
-                          description: vendor.description || "",
-                          notes: vendor.notes || "",
-                        })
-                      }}
-                    >
-                      <X className="mr-2 h-4 w-4" />
-                      Cancel
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      onClick={saveVendorDescription}
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      Save
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingDescription(true)}
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                )
-              }
-            >
-              {editingDescription ? (
-                <div className="space-y-4">
-
-                  <div className="space-y-2">
-                    <Label htmlFor="vendorDescription">
-                      Description
-                    </Label>
-
-                    <Textarea
-                      id="vendorDescription"
-                      placeholder="Add a description of the vendor, their services, or relationship..."
-                      value={descriptionForm.description}
-                      onChange={(e) =>
-                        setDescriptionForm({
-                          ...descriptionForm,
-                          description: e.target.value,
-                        })
-                      }
-                      className="min-h-28 resize-y"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="vendorNotes">
-                      Internal Notes
-                    </Label>
-
-                    <Textarea
-                      id="vendorNotes"
-                      placeholder="Add internal notes about this vendor..."
-                      value={descriptionForm.notes}
-                      onChange={(e) =>
-                        setDescriptionForm({
-                          ...descriptionForm,
-                          notes: e.target.value,
-                        })
-                      }
-                      className="min-h-28 resize-y"
-                    />
-                  </div>
-
-                </div>
-              ) : (
-                <InfoGrid>
-                  <InfoField
-                    label="Description"
-                    value={vendor.description}
-                    colSpan={2}
-                  />
-
-                  <InfoField
-                    label="Internal Notes"
-                    value={vendor.notes}
-                    colSpan={2}
-                  />
-                </InfoGrid>
-              )}
-            </InfoCard>
-
-            <VendorContacts vendorId={vendor.id} />
-
-            <VendorContracts
-              vendorId={vendor.id}
-              onUpdated={async () => {
-                await refetch()
-              }}
-            />
-
-            <VendorMeetings
-              vendorId={vendor.id}
-            />
-
-            <VendorPerformance
-              vendorId={vendor.id}
-              onUpdated={refreshVendorHealth}
-            />
-
-            {/* Relationship */}
-            <InfoCard
-              title="Relationship"
-              icon={Tag}
-            >
-              <InfoGrid>
-                <InfoField
-                  label="Created"
-                  value={formatDate(
-                    vendor.created_at
+                          <SelectContent>
+                            <SelectItem value="onboarding">Onboarding</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="under_review">Under Review</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ) : (
+                    <InfoGrid>
+                      <InfoField label="Vendor Name" value={vendor.name} />
+                      <InfoField label="Vendor Code" value={vendor.vendor_code} />
+                      <InfoField label="Line of Business" value={vendor.line_of_business} />
+                      <InfoField label="Vendor Tier" value={vendor.vendor_tier} />
+                      <InfoField label="Status" value={formatStatus(vendor.status)} />
+                    </InfoGrid>
                   )}
-                />
+                </InfoCard>
 
-                <InfoField
-                  label="Last Updated"
-                  value={formatDate(
-                    vendor.updated_at
+                <InfoCard
+                  title="Vendor Description"
+                  icon={FileText}
+                  action={
+                    editingDescription ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingDescription(false)
+
+                            setDescriptionForm({
+                              description: vendor.description || "",
+                              notes: vendor.notes || "",
+                            })
+                          }}
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Cancel
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          onClick={saveVendorDescription}
+                        >
+                          <Check className="mr-2 h-4 w-4" />
+                          Save
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingDescription(true)}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
+                    )
+                  }
+                >
+                  {editingDescription ? (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="vendorDescription">
+                          Description
+                        </Label>
+
+                        <Textarea
+                          id="vendorDescription"
+                          placeholder="Add a description of the vendor, their services, or relationship..."
+                          value={descriptionForm.description}
+                          onChange={(e) =>
+                            setDescriptionForm({
+                              ...descriptionForm,
+                              description: e.target.value,
+                            })
+                          }
+                          className="min-h-28 resize-y"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="vendorNotes">
+                          Internal Notes
+                        </Label>
+
+                        <Textarea
+                          id="vendorNotes"
+                          placeholder="Add internal notes about this vendor..."
+                          value={descriptionForm.notes}
+                          onChange={(e) =>
+                            setDescriptionForm({
+                              ...descriptionForm,
+                              notes: e.target.value,
+                            })
+                          }
+                          className="min-h-28 resize-y"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <InfoGrid>
+                      <InfoField
+                        label="Description"
+                        value={vendor.description}
+                        colSpan={2}
+                      />
+
+                      <InfoField
+                        label="Internal Notes"
+                        value={vendor.notes}
+                        colSpan={2}
+                      />
+                    </InfoGrid>
                   )}
-                />
+                </InfoCard>
+              </div>
 
-                <InfoField
-                  label="Next Renewal"
-                  value={formatDate(
-                    vendor.renewal_date
-                  )}
-                />
-              </InfoGrid>
-            </InfoCard>
+              <div className="space-y-6">
+                <InfoCard
+                  title="Relationship"
+                  icon={Tag}
+                >
+                  <InfoGrid>
+                    <InfoField
+                      label="Created"
+                      value={formatDate(
+                        vendor.created_at
+                      )}
+                    />
 
-          </div>
+                    <InfoField
+                      label="Last Updated"
+                      value={formatDate(
+                        vendor.updated_at
+                      )}
+                    />
 
-          {/* Right sidebar */}
-          <div className="space-y-6">
-            
+                    <InfoField
+                      label="Next Renewal"
+                      value={formatDate(
+                        vendor.renewal_date
+                      )}
+                    />
+                  </InfoGrid>
+                </InfoCard>
+
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="financials" className="mt-0">
             <VendorBudget
               vendorId={vendor.id}
               onUpdated={async () => {
@@ -634,38 +624,50 @@ export default function VendorDetailsPage() {
                 refreshVendorHealth()
               }}
             />
+          </TabsContent>
 
-            <VendorHealth
+          <TabsContent value="contacts" className="mt-0">
+            <VendorContacts vendorId={vendor.id} />
+          </TabsContent>
+
+          <TabsContent value="contracts" className="mt-0">
+            <VendorContracts
               vendorId={vendor.id}
-              refreshKey={healthRefreshKey}
+              onUpdated={async () => {
+                await refetch()
+              }}
             />
+          </TabsContent>
 
-            {/* Future modules */}
-            <InfoCard
-              title="Coming Next"
-              icon={FileText}
-            >
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  Meetings and agenda tracking
-                </p>
+          <TabsContent value="meetings" className="mt-0">
+            <VendorMeetings
+              vendorId={vendor.id}
+            />
+          </TabsContent>
 
-                <p>
-                  Account reconciliation
-                </p>
+          <TabsContent value="performance" className="mt-0">
+            <VendorPerformance
+              vendorId={vendor.id}
+              onUpdated={refreshVendorHealth}
+            />
+          </TabsContent>
 
-                <p>
-                  Vendor reporting
-                </p>
+          <TabsContent value="health" className="mt-0">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(320px,0.6fr)_minmax(0,1fr)]">
+              <VendorHealth
+                vendorId={vendor.id}
+                refreshKey={healthRefreshKey}
+              />
 
-                <p>
-                  Quick Ask / AI insights
-                </p>
-              </div>
-            </InfoCard>
-
-          </div>
-        </div>
+              <VendorRelationshipRatings
+                vendorId={vendor.id}
+                onUpdated={
+                  refreshVendorHealth
+                }
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

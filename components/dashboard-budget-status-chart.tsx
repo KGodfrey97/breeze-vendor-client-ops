@@ -1,7 +1,5 @@
 "use client"
 
-import { APP_COLORS } from "@/lib/constants/colors"
-
 import {
   Cell,
   Pie,
@@ -31,11 +29,6 @@ export function DashboardBudgetStatusChart({
       name: "Over Budget",
       value: overBudget,
       color: "hsl(var(--destructive))",
-    },
-    {
-      name: "No Data",
-      value: noData,
-      color: "hsl(var(--muted-foreground))",
     },
   ]
 

@@ -20,6 +20,9 @@ import {
   Users,
   ChevronUp,
   PanelLeft,
+  CalendarDays,
+  Building2,
+  ListChecks,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SidebarHeader, SidebarProvider } from "@/components/ui/sidebar"
@@ -106,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {
       title: "Vendors",
       href: "/vendors",
-      icon: FileText,
+      icon: Building2,
     },
     {
       title: "New Vendor",
@@ -114,9 +117,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       icon: Plus,
     },
     {
-      title: "Activity",
-      href: "/activity",
-      icon: Activity,
+      title: "Actions",
+      href: "/actions",
+      icon: ListChecks,
+    },
+    {
+      title: "Meetings",
+      href: "/meetings",
+      icon: CalendarDays,
     },
     {
       title: "Analytics",

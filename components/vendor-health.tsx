@@ -22,6 +22,7 @@ type VendorHealthResponse = {
         weight: number
         measuredMetrics: number
         totalMetrics: number
+        lookbackMonths: number
       }
 
       budget: {
@@ -288,7 +289,14 @@ export function VendorHealth({
                   </p>
 
                   <p className="text-xs text-muted-foreground">
-                    KPI / SLA performance
+                    KPI / SLA performance,
+                    last{" "}
+                    {
+                      health.components
+                        .performance
+                        .lookbackMonths
+                    }{" "}
+                    months
                   </p>
                 </div>
 
@@ -328,13 +336,13 @@ export function VendorHealth({
                     .performance
                     .measuredMetrics
                 }{" "}
-                of{" "}
+                measured results across{" "}
                 {
                   health.components
                     .performance
                     .totalMetrics
                 }{" "}
-                active metrics measured
+                active metrics
               </div>
             </div>
           </div>

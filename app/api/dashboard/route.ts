@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { query } from "@/lib/db"
 import { requireAuthenticatedProfile } from "@/lib/auth-server"
+import { VENDOR_PERFORMANCE_LOOKBACK_MONTHS } from "@/lib/vendor-performance"
 
 type TotalsRow = {
   vendors: string
@@ -19,6 +20,12 @@ type BudgetStatusRow = {
   no_data: string
 }
 
+type BudgetByVendorRow = {
+  vendor_id: string
+  vendor_name: string
+  budget_amount: string
+}
+
 type MetricSummaryRow = {
   total_metrics: string
   measured_metrics: string
@@ -32,6 +39,32 @@ type RenewalRow = {
   contract_id: string
   contract_name: string
   renewal_date: string
+}
+
+type UpcomingMeetingRow = {
+  meeting_id: string
+  vendor_id: string
+  vendor_name: string
+  title: string
+  meeting_type: string | null
+  scheduled_at: string
+  duration_minutes: number | null
+  location: string | null
+  meeting_link: string | null
+}
+
+type DashboardActionRow = {
+  id: string
+  vendor_id: string
+  vendor_name: string
+  meeting_id: string
+  title: string
+  owner_name: string | null
+  due_date: string | null
+  status:
+    | "open"
+    | "in_progress"
+  meeting_title: string
 }
 
 type RenewalCountRow = {
@@ -63,10 +96,13 @@ export async function GET() {
       totalsResult,
       budgetTotalsResult,
       budgetStatusResult,
+      budgetByVendorResult,
       metricSummaryResult,
       renewalsResult,
       renewalCountResult,
       healthResult,
+      upcomingMeetingsResult,
+      upcomingActionsResult,
     ] = await Promise.all([
       // ------------------------------------------------
       // Vendor counts
@@ -159,48 +195,85 @@ export async function GET() {
       ),
 
       // ------------------------------------------------
+      // Current-year budget split by vendor
+      // ------------------------------------------------
+
+      query<BudgetByVendorRow>(
+        `
+        SELECT
+          v.id AS vendor_id,
+          v.name AS vendor_name,
+          SUM(vb.budget_amount)::text
+            AS budget_amount
+
+        FROM vendor_budgets vb
+
+        JOIN vendors v
+          ON v.id = vb.vendor_id
+          AND v.organization_id =
+            vb.organization_id
+
+        WHERE vb.organization_id = $1
+          AND vb.budget_year = $2
+          AND vb.budget_amount > 0
+
+        GROUP BY
+          v.id,
+          v.name
+
+        ORDER BY
+          SUM(vb.budget_amount) DESC,
+          v.name ASC
+        `,
+        [
+          organizationId,
+          currentYear,
+        ]
+      ),
+
+      // ------------------------------------------------
       // KPI / SLA performance
       // ------------------------------------------------
 
       query<MetricSummaryRow>(
         `
-        WITH latest_results AS (
-          SELECT DISTINCT ON (vmr.metric_id)
-            vmr.metric_id,
-            vmr.status
-
-          FROM vendor_metric_results vmr
-
-          WHERE vmr.organization_id = $1
-
-          ORDER BY
-            vmr.metric_id,
-            vmr.period_end DESC,
-            vmr.created_at DESC
-        )
-
         SELECT
-          COUNT(vm.id)::text AS total_metrics,
+          COUNT(DISTINCT vm.id)::text AS total_metrics,
 
-          COUNT(lr.metric_id)::text AS measured_metrics,
+          COUNT(result.id) FILTER (
+            WHERE result.status IN (
+              'met',
+              'missed'
+            )
+          )::text AS measured_metrics,
 
-          COUNT(*) FILTER (
-            WHERE lr.status = 'met'
+          COUNT(result.id) FILTER (
+            WHERE result.status = 'met'
           )::text AS met,
 
-          COUNT(*) FILTER (
-            WHERE lr.status = 'missed'
+          COUNT(result.id) FILTER (
+            WHERE result.status = 'missed'
           )::text AS missed
 
         FROM vendor_metrics vm
 
-        LEFT JOIN latest_results lr
-          ON lr.metric_id = vm.id
+        LEFT JOIN vendor_metric_results result
+          ON result.metric_id = vm.id
+          AND result.vendor_id = vm.vendor_id
+          AND result.organization_id = vm.organization_id
+          AND result.period_end >= (
+            CURRENT_DATE -
+            ($2::int * INTERVAL '1 month')
+          )
+          AND result.period_end <= CURRENT_DATE
 
         WHERE vm.organization_id = $1
           AND vm.is_active = TRUE
         `,
-        [organizationId]
+        [
+          organizationId,
+          VENDOR_PERFORMANCE_LOOKBACK_MONTHS,
+        ]
       ),
 
       // ------------------------------------------------
@@ -343,6 +416,98 @@ export async function GET() {
         `,
         [organizationId]
       ),
+
+      // ------------------------------------------------
+      // Upcoming meetings
+      // ------------------------------------------------
+      query<UpcomingMeetingRow>(
+        `
+        SELECT
+          vm.id AS meeting_id,
+          vm.vendor_id,
+          v.name AS vendor_name,
+          vm.title,
+          vm.meeting_type,
+          vm.scheduled_at,
+          vm.duration_minutes,
+          vm.location,
+          vm.meeting_link
+
+        FROM vendor_meetings vm
+
+        JOIN vendors v
+          ON v.id = vm.vendor_id
+          AND v.organization_id =
+            vm.organization_id
+
+        WHERE vm.organization_id = $1
+          AND vm.status = 'scheduled'
+          AND vm.scheduled_at >= NOW()
+
+        ORDER BY
+          vm.scheduled_at ASC
+
+        LIMIT 6
+        `,
+        [organizationId]
+      ),
+
+      // ------------------------------------------------
+      // Actions
+      // ------------------------------------------------
+      query<DashboardActionRow>(
+        `
+        SELECT
+          ai.id,
+          vm.vendor_id,
+          v.name AS vendor_name,
+          ai.meeting_id,
+          ai.title,
+          ai.owner_name,
+          ai.due_date,
+          ai.status,
+          vm.title AS meeting_title
+
+        FROM vendor_meeting_action_items ai
+
+        JOIN vendor_meetings vm
+          ON vm.id = ai.meeting_id
+          AND vm.organization_id =
+            ai.organization_id
+
+        JOIN vendors v
+          ON v.id = vm.vendor_id
+          AND v.organization_id =
+            ai.organization_id
+
+        WHERE ai.organization_id = $1
+          AND ai.status IN (
+            'open',
+            'in_progress'
+          )
+
+        ORDER BY
+          CASE
+            WHEN ai.due_date IS NOT NULL
+              AND ai.due_date < CURRENT_DATE
+            THEN 0
+
+            WHEN ai.due_date = CURRENT_DATE
+            THEN 1
+
+            WHEN ai.status = 'in_progress'
+            THEN 2
+
+            ELSE 3
+          END,
+
+          ai.due_date ASC NULLS LAST,
+          ai.created_at ASC
+
+        LIMIT 5
+        `,
+        [organizationId]
+      ),
     ])
 
     // --------------------------------------------------
@@ -413,6 +578,22 @@ export async function GET() {
           ?.no_data ?? 0
       ),
     }
+
+    const budgetByVendor =
+      budgetByVendorResult.rows.map(
+        (row) => ({
+          vendorId:
+            row.vendor_id,
+
+          vendorName:
+            row.vendor_name,
+
+          budgetAmount:
+            Number(
+              row.budget_amount
+            ),
+        })
+      )
 
     // --------------------------------------------------
     // Performance
@@ -522,6 +703,74 @@ export async function GET() {
       )
 
     // --------------------------------------------------
+    // Meetings
+    // --------------------------------------------------
+    const upcomingMeetings =
+      upcomingMeetingsResult.rows.map(
+        (row) => ({
+          meetingId:
+            row.meeting_id,
+
+          vendorId:
+            row.vendor_id,
+
+          vendorName:
+            row.vendor_name,
+
+          title:
+            row.title,
+
+          meetingType:
+            row.meeting_type,
+
+          scheduledAt:
+            row.scheduled_at,
+
+          durationMinutes:
+            row.duration_minutes,
+
+          location:
+            row.location,
+
+          meetingLink:
+            row.meeting_link,
+        })
+      )
+    
+    // --------------------------------------------------
+    // Actions
+    // --------------------------------------------------
+    const upcomingActions =
+      upcomingActionsResult.rows.map(
+        (row) => ({
+          id: row.id,
+
+          vendorId:
+            row.vendor_id,
+
+          vendorName:
+            row.vendor_name,
+
+          meetingId:
+            row.meeting_id,
+
+          title:
+            row.title,
+
+          ownerName:
+            row.owner_name,
+
+          dueDate:
+            row.due_date,
+
+          status:
+            row.status,
+
+          meetingTitle:
+            row.meeting_title,
+        })
+      )
+    // --------------------------------------------------
     // Final response
     // --------------------------------------------------
 
@@ -537,6 +786,8 @@ export async function GET() {
 
       budgetStatus,
 
+      budgetByVendor,
+
       health: {
         averageScore,
         gradeDistribution,
@@ -548,9 +799,15 @@ export async function GET() {
         met,
         missed,
         complianceRate,
+        lookbackMonths:
+          VENDOR_PERFORMANCE_LOOKBACK_MONTHS,
       },
 
       renewals,
+
+      upcomingMeetings,
+
+      upcomingActions,
     })
   } catch (error) {
     console.error(

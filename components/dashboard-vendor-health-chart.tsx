@@ -53,11 +53,6 @@ export function DashboardVendorHealthChart({
       vendors: distribution.F,
       color: "hsl(var(--destructive))",
     },
-    {
-      grade: "No Data",
-      vendors: distribution.noData,
-      color: "hsl(var(--muted-foreground))",
-    },
   ]
 
   return (

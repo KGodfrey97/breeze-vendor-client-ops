@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { query } from "@/lib/db"
 import { requireAuthenticatedProfile } from "@/lib/auth-server"
+import { VENDOR_PERFORMANCE_LOOKBACK_MONTHS } from "@/lib/vendor-performance"
 
 type RouteContext = {
   params: Promise<{
@@ -16,15 +17,11 @@ type VendorHealthRow = {
   health_calculated_at: string | null
 }
 
-type MetricHealthRow = {
-  id: string
-  name: string
-  weight: string
-  latest_status:
-    | "met"
-    | "missed"
-    | "not_measured"
-    | null
+type MetricHealthSummaryRow = {
+  total_metrics: string
+  measured_results: string
+  met_weight: string | null
+  total_measured_weight: string | null
 }
 
 type BudgetHealthRow = {
@@ -127,39 +124,57 @@ export async function GET(
       metricsResult,
       budgetResult,
     ] = await Promise.all([
-      query<MetricHealthRow>(
+      query<MetricHealthSummaryRow>(
         `
         SELECT
-          vm.id,
-          vm.name,
-          vm.weight,
+          COUNT(DISTINCT vm.id)::text
+            AS total_metrics,
 
-          latest.status
-            AS latest_status
+          COUNT(result.id) FILTER (
+            WHERE result.status IN (
+              'met',
+              'missed'
+            )
+          )::text AS measured_results,
+
+          SUM(
+            CASE
+              WHEN result.status = 'met'
+              THEN vm.weight
+              ELSE 0
+            END
+          )::text AS met_weight,
+
+          SUM(
+            CASE
+              WHEN result.status IN (
+                'met',
+                'missed'
+              )
+              THEN vm.weight
+              ELSE 0
+            END
+          )::text AS total_measured_weight
 
         FROM vendor_metrics vm
 
-        LEFT JOIN LATERAL (
-          SELECT
-            vmr.status
+        LEFT JOIN vendor_metric_results result
+          ON result.metric_id =
+            vm.id
 
-          FROM vendor_metric_results vmr
+          AND result.vendor_id =
+            vm.vendor_id
 
-          WHERE vmr.metric_id =
-              vm.id
+          AND result.organization_id =
+            vm.organization_id
 
-            AND vmr.vendor_id =
-              vm.vendor_id
+          AND result.period_end >= (
+            CURRENT_DATE -
+            ($3::int * INTERVAL '1 month')
+          )
 
-            AND vmr.organization_id =
-              vm.organization_id
-
-          ORDER BY
-            vmr.period_end DESC,
-            vmr.created_at DESC
-
-          LIMIT 1
-        ) latest ON TRUE
+          AND result.period_end <=
+            CURRENT_DATE
 
         WHERE vm.vendor_id = $1
           AND vm.organization_id = $2
@@ -168,6 +183,7 @@ export async function GET(
         [
           vendorId,
           profile.organization_id,
+          VENDOR_PERFORMANCE_LOOKBACK_MONTHS,
         ]
       ),
 
@@ -201,60 +217,33 @@ export async function GET(
     // Performance Score
     // ---------------------------------------------
 
-    const measuredMetrics =
-      metricsResult.rows.filter(
-        (metric) =>
-          metric.latest_status ===
-            "met" ||
-          metric.latest_status ===
-            "missed"
-      )
+    const metricSummary =
+      metricsResult.rows[0]
 
     let performanceScore:
       | number
       | null = null
 
-    if (
-      measuredMetrics.length > 0
-    ) {
-      const totalWeight =
-        measuredMetrics.reduce(
-          (
-            total,
-            metric
-          ) =>
-            total +
-            Number(
-              metric.weight
-            ),
-          0
-        )
+    const measuredResults =
+      Number(
+        metricSummary
+          ?.measured_results ?? 0
+      )
 
-      const metWeight =
-        measuredMetrics
-          .filter(
-            (metric) =>
-              metric.latest_status ===
-              "met"
-          )
-          .reduce(
-            (
-              total,
-              metric
-            ) =>
-              total +
-              Number(
-                metric.weight
-              ),
-            0
-          )
+    const totalMetricWeight =
+      Number(
+        metricSummary
+          ?.total_measured_weight ?? 0
+      )
 
+    if (totalMetricWeight > 0) {
       performanceScore =
-        totalWeight > 0
-          ? (metWeight /
-              totalWeight) *
-            100
-          : null
+        (Number(
+          metricSummary
+            ?.met_weight ?? 0
+        ) /
+          totalMetricWeight) *
+        100
     }
 
     const roundedPerformanceScore =
@@ -325,11 +314,16 @@ export async function GET(
             weight: 70,
 
             measuredMetrics:
-              measuredMetrics.length,
+              measuredResults,
 
             totalMetrics:
-              metricsResult.rows
-                .length,
+              Number(
+                metricSummary
+                  ?.total_metrics ?? 0
+              ),
+
+            lookbackMonths:
+              VENDOR_PERFORMANCE_LOOKBACK_MONTHS,
           },
 
           budget: {
