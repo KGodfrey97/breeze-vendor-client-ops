@@ -379,18 +379,6 @@ export default function DashboardPage() {
   const renewals =
     dashboard?.renewals || []
 
-  const totalBudgetVendors =
-    (budget?.withinBudget || 0) +
-    (budget?.overBudget || 0) +
-    (budget?.noData || 0)
-
-  const withinBudgetPercent =
-    totalBudgetVendors > 0
-      ? ((budget?.withinBudget || 0) /
-          totalBudgetVendors) *
-        100
-      : 0
-
   const metPercent =
     performance?.measuredMetrics
       ? (performance.met /
@@ -673,11 +661,11 @@ export default function DashboardPage() {
         <Card className="app-surface lg:col-span-3">
           <CardHeader>
             <CardTitle>
-              Budget Status
+              Budget Allocation
             </CardTitle>
 
             <CardDescription>
-              Current-year budget allocation by vendor
+              Current-year budget distribution by vendor
             </CardDescription>
           </CardHeader>
 
@@ -686,26 +674,6 @@ export default function DashboardPage() {
               <Skeleton className="h-48 w-full" />
             ) : (
               <div className="space-y-6">
-
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      Within Budget
-                    </span>
-
-                    <span className="text-sm font-semibold text-primary">
-                      {budget?.withinBudget ||
-                        0}
-                    </span>
-                  </div>
-
-                  <Progress
-                    value={
-                      withinBudgetPercent
-                    }
-                    className="mt-2"
-                  />
-                </div>
 
                 <DashboardBudgetStatusChart
                   vendors={budgetByVendor}
