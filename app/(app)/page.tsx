@@ -1,12 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import {
+  useEffect,
+  useState,
+} from "react"
 import CountUp from "react-countup"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import {
+  useRouter,
+} from "next/navigation"
 
 import {
   AlertCircle,
+  ArrowRight,
   Building2,
   CalendarClock,
   CircleDollarSign,
@@ -23,7 +29,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -38,7 +43,12 @@ import { DashboardBudgetStatusChart } from "@/components/dashboard/dashboard-bud
 import { DashboardVendorHealthChart } from "@/components/dashboard/dashboard-vendor-health-chart"
 import { DashboardUpcomingMeetings } from "@/components/dashboard/dashboard-upcoming-meetings"
 import { DashboardUpcomingActions } from "@/components/dashboard/dashboard-upcoming-actions"
+import { DashboardUpcomingRenewals } from "@/components/dashboard/dashboard-upcoming-renewals"
 import { DashboardKpiSlaPerformance } from "@/components/dashboard/dashboard-kpi-sla-performance"
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
 type GradeDistribution = {
   A: number
@@ -85,13 +95,13 @@ type DashboardData = {
     lookbackMonths: number
   }
 
-  renewals: Array<{
+  renewals: {
     vendorId: string
     vendorName: string
     contractId: string
     contractName: string
     renewalDate: string
-  }>
+  }[]
 
   upcomingMeetings: {
     meetingId: string
@@ -120,6 +130,10 @@ type DashboardData = {
   }[]
 }
 
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
+
 export default function DashboardPage() {
   const {
     user,
@@ -128,16 +142,34 @@ export default function DashboardPage() {
     initialized,
   } = useAuth()
 
-  const router = useRouter()
+  const router =
+    useRouter()
 
-  const [dashboard, setDashboard] =
-    useState<DashboardData | null>(null)
+  const [
+    dashboard,
+    setDashboard,
+  ] =
+    useState<DashboardData | null>(
+      null
+    )
 
-  const [isLoading, setIsLoading] =
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
     useState(true)
 
-  const [error, setError] =
-    useState<string | null>(null)
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* Authentication                                                           */
+  /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
     if (
@@ -145,7 +177,9 @@ export default function DashboardPage() {
       !authLoading &&
       !user
     ) {
-      router.replace("/auth/login")
+      router.replace(
+        "/auth/login"
+      )
     }
   }, [
     initialized,
@@ -153,6 +187,10 @@ export default function DashboardPage() {
     user,
     router,
   ])
+
+  /* ------------------------------------------------------------------------ */
+  /* Dashboard Data                                                           */
+  /* ------------------------------------------------------------------------ */
 
   const fetchDashboardData =
     async () => {
@@ -164,7 +202,8 @@ export default function DashboardPage() {
           await fetch(
             "/api/dashboard",
             {
-              cache: "no-store",
+              cache:
+                "no-store",
             }
           )
 
@@ -178,7 +217,9 @@ export default function DashboardPage() {
           )
         }
 
-        setDashboard(payload)
+        setDashboard(
+          payload
+        )
       } catch (error) {
         console.error(
           "Error fetching dashboard data:",
@@ -191,7 +232,9 @@ export default function DashboardPage() {
             : "An unexpected error occurred"
         )
       } finally {
-        setIsLoading(false)
+        setIsLoading(
+          false
+        )
       }
     }
 
@@ -211,56 +254,29 @@ export default function DashboardPage() {
     user,
   ])
 
+  /* ------------------------------------------------------------------------ */
+  /* Helpers                                                                  */
+  /* ------------------------------------------------------------------------ */
+
   const formatCurrency = (
     value: number
   ) => {
     return new Intl.NumberFormat(
       "en-US",
       {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
+        style:
+          "currency",
+        currency:
+          "USD",
+        maximumFractionDigits:
+          0,
       }
     ).format(value)
   }
 
-  const formatDate = (
-    value: string
-  ) => {
-    return new Date(
-      `${value.slice(0, 10)}T00:00:00`
-    ).toLocaleDateString(
-      "en-US",
-      {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }
-    )
-  }
-
-  const getDaysUntil = (
-    value: string
-  ) => {
-    const today = new Date()
-
-    today.setHours(
-      0,
-      0,
-      0,
-      0
-    )
-
-    const date = new Date(
-      `${value.slice(0, 10)}T00:00:00`
-    )
-
-    return Math.ceil(
-      (date.getTime() -
-        today.getTime()) /
-        (1000 * 60 * 60 * 24)
-    )
-  }
+  /* ------------------------------------------------------------------------ */
+  /* Authentication Loading                                                   */
+  /* ------------------------------------------------------------------------ */
 
   if (
     !initialized ||
@@ -278,6 +294,10 @@ export default function DashboardPage() {
       </div>
     )
   }
+
+  /* ------------------------------------------------------------------------ */
+  /* Authentication Error                                                     */
+  /* ------------------------------------------------------------------------ */
 
   if (
     authError &&
@@ -310,6 +330,10 @@ export default function DashboardPage() {
     )
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Redirecting                                                              */
+  /* ------------------------------------------------------------------------ */
+
   if (
     initialized &&
     !authLoading &&
@@ -321,12 +345,17 @@ export default function DashboardPage() {
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-primary" />
 
           <p className="text-muted-foreground">
-            Redirecting to login...
+            Redirecting to
+            login...
           </p>
         </div>
       </div>
     )
   }
+
+  /* ------------------------------------------------------------------------ */
+  /* Dashboard Error                                                          */
+  /* ------------------------------------------------------------------------ */
 
   if (
     error &&
@@ -351,6 +380,7 @@ export default function DashboardPage() {
               className="ml-4"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
+
               Retry
             </Button>
           </AlertDescription>
@@ -359,14 +389,16 @@ export default function DashboardPage() {
     )
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Dashboard Values                                                         */
+  /* ------------------------------------------------------------------------ */
+
   const totals =
     dashboard?.totals
 
-  const budget =
-    dashboard?.budgetStatus
-
   const budgetByVendor =
-    dashboard?.budgetByVendor || []
+    dashboard?.budgetByVendor ||
+    []
 
   const health =
     dashboard?.health
@@ -375,92 +407,98 @@ export default function DashboardPage() {
     dashboard?.performance
 
   const renewals =
-    dashboard?.renewals || []
+    dashboard?.renewals ||
+    []
 
-  const metPercent =
-    performance?.measuredMetrics
-      ? (performance.met /
-          performance.measuredMetrics) *
+  const currentYearBudget =
+    Number(
+      totals?.currentYearBudget
+    ) || 0
+
+  const forecastSpend =
+    Number(
+      totals?.forecastSpend
+    ) || 0
+
+  const remainingBudget =
+    currentYearBudget -
+    forecastSpend
+
+  const forecastUtilization =
+    currentYearBudget > 0
+      ? (
+          forecastSpend /
+          currentYearBudget
+        ) *
         100
       : 0
+
+  const displayForecastUtilization =
+    Math.max(
+      0,
+      forecastUtilization
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* Render                                                                   */
+  /* ------------------------------------------------------------------------ */
 
   return (
     <div className="app-page space-y-6">
 
-      {/* Header */}
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">
-            Dashboard
-          </h1>
-
-          <p className="text-muted-foreground">
-            Vendor operations overview
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={
-            fetchDashboardData
-          }
-          disabled={isLoading}
-        >
-          <RefreshCw
-            className={`mr-2 h-4 w-4 ${
-              isLoading
-                ? "animate-spin"
-                : ""
-            }`}
-          />
-
-          Refresh
-        </Button>
-      </div>
-
-      {/* Top KPI Cards */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Top KPI Cards                                                      */}
+      {/* ------------------------------------------------------------------ */}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-
         {/* Total Vendors */}
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Vendors
-            </CardTitle>
+        <Link
+          href="/vendors"
+          className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <Card className="app-surface h-full transition-all group-hover:border-primary/30 group-hover:bg-muted/20 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total Vendors
+              </CardTitle>
 
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
 
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">
-                  <CountUp
-                    end={
-                      totals?.vendors ||
-                      0
-                    }
-                    duration={1.2}
-                  />
-                </div>
+                <ArrowRight className="h-3.5 w-3.5 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+              </div>
+            </CardHeader>
 
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {totals?.activeVendors ||
-                    0}{" "}
-                  active vendors
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    <CountUp
+                      end={
+                        totals?.vendors ||
+                        0
+                      }
+                      duration={
+                        1.2
+                      }
+                    />
+                  </div>
 
-        {/* Budget */}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {totals?.activeVendors ||
+                      0}{" "}
+                    active vendors
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Current-Year Budget */}
 
         <Card className="app-surface">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -478,16 +516,14 @@ export default function DashboardPage() {
               <>
                 <div className="text-2xl font-bold">
                   {formatCurrency(
-                    totals?.currentYearBudget ||
-                      0
+                    currentYearBudget
                   )}
                 </div>
 
                 <p className="mt-1 text-xs text-muted-foreground">
                   Forecast:{" "}
                   {formatCurrency(
-                    totals?.forecastSpend ||
-                      0
+                    forecastSpend
                   )}
                 </p>
               </>
@@ -543,46 +579,58 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Expiring Vendors */}
+        {/* Contracts Renewing */}
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Upcoming Renewals
-            </CardTitle>
+        <Link
+          href="/vendors?renewal=90"
+          className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <Card className="app-surface h-full transition-all group-hover:border-primary/30 group-hover:bg-muted/20 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">
+                Contracts Renewing
+              </CardTitle>
 
-            <CalendarClock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
+              <div className="flex items-center gap-2">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
 
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">
-                  <CountUp
-                    end={
-                      totals?.expiringVendors ||
-                      0
-                    }
-                    duration={1.2}
-                  />
-                </div>
+                <ArrowRight className="h-3.5 w-3.5 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+              </div>
+            </CardHeader>
 
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Next 90 days
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    <CountUp
+                      end={
+                        totals?.expiringVendors ||
+                        0
+                      }
+                      duration={
+                        1.2
+                      }
+                    />
+                  </div>
+
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Within 90 days
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
-      {/* Health + Budget Status */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Vendor Health + Budget Allocation                                  */}
+      {/* ------------------------------------------------------------------ */}
 
       <div className="grid gap-4 lg:grid-cols-7">
-
-        {/* Health */}
+        {/* Vendor Health */}
 
         <Card className="app-surface lg:col-span-4">
           <CardHeader>
@@ -591,7 +639,9 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Overall vendor health based on KPI / SLA performance and budget
+              Overall vendor health
+              based on KPI / SLA
+              performance and budget
             </CardDescription>
           </CardHeader>
 
@@ -599,13 +649,15 @@ export default function DashboardPage() {
             {isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-5">
+                {/* Average Score */}
 
                 <div>
                   <div className="flex items-end justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        Average Health Score
+                        Average Health
+                        Score
                       </p>
 
                       <p className="mt-1 text-4xl font-bold">
@@ -637,6 +689,8 @@ export default function DashboardPage() {
                   />
                 </div>
 
+                {/* Grade Distribution */}
+
                 <DashboardVendorHealthChart
                   distribution={
                     health?.gradeDistribution || {
@@ -654,7 +708,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Budget Status */}
+        {/* Budget Allocation */}
 
         <Card className="app-surface lg:col-span-3">
           <CardHeader>
@@ -663,7 +717,8 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Current-year budget distribution by vendor
+              Current-year budget
+              distribution by vendor
             </CardDescription>
           </CardHeader>
 
@@ -671,37 +726,89 @@ export default function DashboardPage() {
             {isLoading ? (
               <Skeleton className="h-48 w-full" />
             ) : (
-              <div className="space-y-6">
-
+              <div className="space-y-5">
                 <DashboardBudgetStatusChart
-                  vendors={budgetByVendor}
+                  vendors={
+                    budgetByVendor
+                  }
                 />
 
-                <div className="border-t pt-4">
-                  <div className="flex justify-between text-sm">
+                {/* Budget Summary */}
+
+                <div className="space-y-2.5 border-t pt-4">
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
                       Forecast Spend
                     </span>
 
                     <span className="font-medium">
                       {formatCurrency(
-                        totals?.forecastSpend ||
-                          0
+                        forecastSpend
                       )}
                     </span>
                   </div>
 
-                  <div className="mt-2 flex justify-between text-sm">
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
                       Approved Budget
                     </span>
 
                     <span className="font-medium">
                       {formatCurrency(
-                        totals?.currentYearBudget ||
-                          0
+                        currentYearBudget
                       )}
                     </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Remaining
+                    </span>
+
+                    <span
+                      className={
+                        remainingBudget >=
+                        0
+                          ? "font-medium text-primary"
+                          : "font-medium text-destructive"
+                      }
+                    >
+                      {remainingBudget <
+                      0
+                        ? "-"
+                        : ""}
+                      {formatCurrency(
+                        Math.abs(
+                          remainingBudget
+                        )
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="pt-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        Forecast
+                        Utilization
+                      </span>
+
+                      <span className="font-medium">
+                        {forecastUtilization.toFixed(
+                          1
+                        )}
+                        %
+                      </span>
+                    </div>
+
+                    <Progress
+                      className="mt-2 h-1.5"
+                      value={
+                        Math.min(
+                          displayForecastUtilization,
+                          100
+                        )
+                      }
+                    />
                   </div>
                 </div>
               </div>
@@ -710,8 +817,11 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* ------------------------------------------------------------------ */}
+      {/* Meetings + Actions                                                 */}
+      {/* ------------------------------------------------------------------ */}
 
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* Upcoming Meetings */}
 
         <Card className="app-surface">
@@ -721,7 +831,8 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Scheduled vendor meetings coming up next
+              Scheduled vendor
+              meetings coming up next
             </CardDescription>
           </CardHeader>
 
@@ -748,7 +859,8 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Follow-up work requiring attention
+              Follow-up work requiring
+              attention
             </CardDescription>
           </CardHeader>
 
@@ -765,14 +877,14 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-
       </div>
 
-      {/* Renewals + Performance */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Renewals + KPI / SLA Performance                                   */}
+      {/* ------------------------------------------------------------------ */}
 
       <div className="grid gap-4 lg:grid-cols-2">
-
-        {/* Renewals */}
+        {/* Upcoming Renewals */}
 
         <Card className="app-surface">
           <CardHeader>
@@ -781,98 +893,25 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Active vendor contracts approaching renewal
+              Active vendor contracts
+              approaching renewal
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-40 w-full" />
-            ) : renewals.length ===
-              0 ? (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <CalendarClock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-
-                <p className="font-medium">
-                  No upcoming renewals
-                </p>
-
-                <p className="mt-1 text-sm text-muted-foreground">
-                  No active vendor contracts renew within the next 90 days.
-                </p>
-              </div>
             ) : (
-              <div className="space-y-2">
-                {renewals.map(
-                  (renewal) => {
-                    const daysUntil =
-                      getDaysUntil(
-                        renewal.renewalDate
-                      )
-
-                    return (
-                      <Link
-                        key={
-                          renewal.contractId
-                        }
-                        href={`/vendors/${renewal.vendorId}`}
-                        className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">
-                            {
-                              renewal.vendorName
-                            }
-                          </p>
-
-                          <p className="truncate text-sm text-muted-foreground">
-                            {
-                              renewal.contractName
-                            }
-                          </p>
-                        </div>
-
-                        <div className="ml-4 shrink-0 text-right">
-                          <p className="text-sm font-medium">
-                            {formatDate(
-                              renewal.renewalDate
-                            )}
-                          </p>
-
-                          <p
-                            className={`text-xs ${
-                              daysUntil <=
-                              30
-                                ? "text-destructive"
-                                : daysUntil <=
-                                  60
-                                ? "text-warning"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {daysUntil}{" "}
-                            days
-                          </p>
-                        </div>
-                      </Link>
-                    )
-                  }
-                )}
-              </div>
+              <DashboardUpcomingRenewals
+                renewals={
+                  renewals
+                }
+              />
             )}
           </CardContent>
-
-          <CardFooter>
-            <Link
-              href="/vendors"
-              className="text-sm text-muted-foreground hover:underline"
-            >
-              View all vendors
-            </Link>
-          </CardFooter>
         </Card>
 
-        {/* Performance */}
+        {/* KPI / SLA Performance */}
 
         <Card className="app-surface">
           <CardHeader>
@@ -881,7 +920,8 @@ export default function DashboardPage() {
             </CardTitle>
 
             <CardDescription>
-              Latest results across active vendor metrics
+              Latest results across
+              active vendor metrics
             </CardDescription>
           </CardHeader>
 
@@ -890,7 +930,9 @@ export default function DashboardPage() {
               <Skeleton className="h-[300px] w-full" />
             ) : (
               <DashboardKpiSlaPerformance
-                performance={performance}
+                performance={
+                  performance
+                }
               />
             )}
           </CardContent>

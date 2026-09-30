@@ -3,10 +3,12 @@
 import Link from "next/link"
 
 import {
+  ArrowRight,
   CalendarDays,
   Clock3,
   ExternalLink,
   MapPin,
+  Video,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -27,10 +29,15 @@ type DashboardUpcomingMeetingsProps = {
   meetings: UpcomingMeeting[]
 }
 
+/* -------------------------------------------------------------------------- */
+/* Date Helpers                                                               */
+/* -------------------------------------------------------------------------- */
+
 function formatDateTime(
   value: string
 ) {
-  const date = new Date(value)
+  const date =
+    new Date(value)
 
   if (
     Number.isNaN(
@@ -38,12 +45,84 @@ function formatDateTime(
     )
   ) {
     return {
+      month: "—",
+      day: "—",
       date: "—",
       time: "—",
+      relativeDate: null,
     }
   }
 
+  const now =
+    new Date()
+
+  const startOfToday =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    )
+
+  const startOfMeetingDay =
+    new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    )
+
+  const dayDifference =
+    Math.round(
+      (
+        startOfMeetingDay.getTime() -
+        startOfToday.getTime()
+      ) /
+        86_400_000
+    )
+
+  let relativeDate:
+    | string
+    | null = null
+
+  if (dayDifference === 0) {
+    relativeDate =
+      "Today"
+  } else if (
+    dayDifference === 1
+  ) {
+    relativeDate =
+      "Tomorrow"
+  } else if (
+    dayDifference > 1 &&
+    dayDifference <= 7
+  ) {
+    relativeDate =
+      date.toLocaleDateString(
+        "en-US",
+        {
+          weekday: "long",
+        }
+      )
+  }
+
   return {
+    month:
+      date
+        .toLocaleDateString(
+          "en-US",
+          {
+            month: "short",
+          }
+        )
+        .toUpperCase(),
+
+    day:
+      date.toLocaleDateString(
+        "en-US",
+        {
+          day: "numeric",
+        }
+      ),
+
     date:
       date.toLocaleDateString(
         "en-US",
@@ -61,33 +140,79 @@ function formatDateTime(
           minute: "2-digit",
         }
       ),
+
+    relativeDate,
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Component                                                                  */
+/* -------------------------------------------------------------------------- */
 
 export function DashboardUpcomingMeetings({
   meetings,
 }: DashboardUpcomingMeetingsProps) {
+  /*
+   * Sort defensively even if the
+   * API already returns meetings
+   * chronologically.
+   */
+  const sortedMeetings =
+    [...meetings].sort(
+      (a, b) =>
+        new Date(
+          a.scheduledAt
+        ).getTime() -
+        new Date(
+          b.scheduledAt
+        ).getTime()
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* Empty State                                                              */
+  /* ------------------------------------------------------------------------ */
+
   if (
-    meetings.length === 0
+    sortedMeetings.length ===
+    0
   ) {
     return (
       <div className="rounded-lg border border-dashed border-border p-6 text-center">
-        <CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+          <CalendarDays className="h-5 w-5 text-muted-foreground" />
+        </div>
 
-        <p className="font-medium">
+        <p className="mt-3 font-medium">
           No upcoming meetings
         </p>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Scheduled vendor meetings will appear here.
+          Scheduled vendor
+          meetings will appear
+          here.
         </p>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          asChild
+        >
+          <Link href="/meetings">
+            View meetings
+          </Link>
+        </Button>
       </div>
     )
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Meetings                                                                 */
+  /* ------------------------------------------------------------------------ */
+
   return (
     <div className="space-y-3">
-      {meetings.map(
+      {sortedMeetings.map(
         (meeting) => {
           const formatted =
             formatDateTime(
@@ -99,63 +224,78 @@ export function DashboardUpcomingMeetings({
               key={
                 meeting.meetingId
               }
-              className="rounded-xl border border-border bg-card p-4"
+              className="group rounded-xl border border-border bg-card p-4 transition-all hover:border-border/80 hover:bg-muted/20 hover:shadow-sm"
             >
               <div className="flex items-start gap-3">
+                {/* ------------------------------------------------------ */}
+                {/* Date                                                   */}
+                {/* ------------------------------------------------------ */}
 
-                <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-secondary/10 text-secondary">
-                  <span className="text-xs font-medium uppercase">
+                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide">
                     {
-                      formatted.date.split(
-                        " "
-                      )[0]
+                      formatted.month
                     }
                   </span>
 
                   <span className="text-lg font-bold leading-none">
                     {
-                      formatted.date.split(
-                        " "
-                      )[1]
+                      formatted.day
                     }
                   </span>
                 </div>
 
+                {/* ------------------------------------------------------ */}
+                {/* Meeting Information                                    */}
+                {/* ------------------------------------------------------ */}
+
                 <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-semibold text-foreground">
+                      {
+                        meeting.title
+                      }
+                    </p>
+
+                    {formatted.relativeDate && (
+                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                        {
+                          formatted.relativeDate
+                        }
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Vendor */}
 
                   <Link
                     href={`/vendors/view/${meeting.vendorId}`}
-                    className="font-semibold text-foreground hover:underline"
+                    className="mt-0.5 inline-block truncate text-sm text-muted-foreground transition-colors hover:text-foreground hover:underline"
                   >
-                    {
-                      meeting.title
-                    }
-                  </Link>
-
-                  <p className="mt-0.5 text-sm text-muted-foreground">
                     {
                       meeting.vendorName
                     }
-                  </p>
+                  </Link>
 
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {/* Meeting Details */}
 
-                    <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3.5 w-3.5" />
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock3 className="h-3.5 w-3.5 shrink-0" />
 
-                      {
-                        formatted.date
-                      }
-
-                      {" • "}
-
-                      {
-                        formatted.time
-                      }
+                      <span>
+                        {
+                          formatted.date
+                        }
+                        {" • "}
+                        {
+                          formatted.time
+                        }
+                      </span>
                     </span>
 
                     {meeting.durationMinutes ? (
-                      <span>
+                      <span className="whitespace-nowrap">
                         {
                           meeting.durationMinutes
                         }{" "}
@@ -164,20 +304,23 @@ export function DashboardUpcomingMeetings({
                     ) : null}
 
                     {meeting.location ? (
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
 
-                        {
-                          meeting.location
-                        }
+                        <span className="max-w-[180px] truncate">
+                          {
+                            meeting.location
+                          }
+                        </span>
                       </span>
                     ) : null}
-
                   </div>
+
+                  {/* Meeting Type */}
 
                   {meeting.meetingType ? (
                     <div className="mt-2">
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                         {
                           meeting.meetingType
                         }
@@ -186,10 +329,15 @@ export function DashboardUpcomingMeetings({
                   ) : null}
                 </div>
 
+                {/* ------------------------------------------------------ */}
+                {/* Join Meeting                                           */}
+                {/* ------------------------------------------------------ */}
+
                 {meeting.meetingLink ? (
                   <Button
                     variant="outline"
                     size="sm"
+                    className="shrink-0"
                     asChild
                   >
                     <a
@@ -197,19 +345,39 @@ export function DashboardUpcomingMeetings({
                         meeting.meetingLink
                       }
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                     >
-                      <ExternalLink className="mr-2 h-4 w-4" />
+                      <Video className="mr-2 h-4 w-4" />
+
                       Join
+
+                      <ExternalLink className="ml-2 h-3 w-3 text-muted-foreground" />
                     </a>
                   </Button>
                 ) : null}
-
               </div>
             </div>
           )
         }
       )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* View All                                                         */}
+      {/* ---------------------------------------------------------------- */}
+
+      <div className="flex justify-end border-t pt-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+        >
+          <Link href="/meetings">
+            View all meetings
+
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
     </div>
   )
 }

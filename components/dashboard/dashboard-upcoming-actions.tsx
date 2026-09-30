@@ -4,6 +4,7 @@ import Link from "next/link"
 
 import {
   AlertCircle,
+  ArrowRight,
   CheckCircle2,
   Circle,
   Clock3,
@@ -30,6 +31,10 @@ type DashboardAction = {
 type DashboardUpcomingActionsProps = {
   actions: DashboardAction[]
 }
+
+/* -------------------------------------------------------------------------- */
+/* Date Helpers                                                               */
+/* -------------------------------------------------------------------------- */
 
 function parseDate(
   value: string | null
@@ -81,36 +86,14 @@ function formatDate(
   )
 }
 
-function getDueMeta(
+function getDaysUntilDue(
   value: string | null
 ) {
-  if (!value) {
-    return {
-      label:
-        "No due date",
-
-      tone:
-        "text-muted-foreground",
-
-      icon:
-        Clock3,
-    }
-  }
-
   const date =
     parseDate(value)
 
   if (!date) {
-    return {
-      label:
-        "No due date",
-
-      tone:
-        "text-muted-foreground",
-
-      icon:
-        Clock3,
-    }
+    return null
   }
 
   const today =
@@ -123,19 +106,38 @@ function getDueMeta(
     0
   )
 
+  return Math.round(
+    (
+      date.getTime() -
+      today.getTime()
+    ) /
+      86_400_000
+  )
+}
+
+function getDueMeta(
+  value: string | null
+) {
   const diff =
-    Math.ceil(
-      (
-        date.getTime() -
-        today.getTime()
-      ) /
-        (
-          1000 *
-          60 *
-          60 *
-          24
-        )
+    getDaysUntilDue(
+      value
     )
+
+  if (diff == null) {
+    return {
+      label:
+        "No due date",
+
+      tone:
+        "text-muted-foreground",
+
+      icon:
+        Clock3,
+
+      isOverdue:
+        false,
+    }
+  }
 
   if (diff < 0) {
     const days =
@@ -154,6 +156,9 @@ function getDueMeta(
 
       icon:
         AlertCircle,
+
+      isOverdue:
+        true,
     }
   }
 
@@ -167,23 +172,41 @@ function getDueMeta(
 
       icon:
         Clock3,
+
+      isOverdue:
+        false,
     }
   }
 
-  if (diff <= 7) {
+  if (diff === 1) {
     return {
       label:
-        `Due in ${diff} day${
-          diff === 1
-            ? ""
-            : "s"
-        }`,
+        "Due tomorrow",
 
       tone:
         "text-warning",
 
       icon:
         Clock3,
+
+      isOverdue:
+        false,
+    }
+  }
+
+  if (diff <= 7) {
+    return {
+      label:
+        `Due in ${diff} days`,
+
+      tone:
+        "text-warning",
+
+      icon:
+        Clock3,
+
+      isOverdue:
+        false,
     }
   }
 
@@ -196,33 +219,106 @@ function getDueMeta(
 
     icon:
       Clock3,
+
+    isOverdue:
+      false,
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Component                                                                  */
+/* -------------------------------------------------------------------------- */
 
 export function DashboardUpcomingActions({
   actions,
 }: DashboardUpcomingActionsProps) {
+  /*
+   * Sort by urgency:
+   *
+   * 1. Overdue
+   * 2. Due today
+   * 3. Upcoming
+   * 4. No due date
+   */
+  const sortedActions =
+    [...actions].sort(
+      (a, b) => {
+        const aDiff =
+          getDaysUntilDue(
+            a.dueDate
+          )
+
+        const bDiff =
+          getDaysUntilDue(
+            b.dueDate
+          )
+
+        if (
+          aDiff == null &&
+          bDiff == null
+        ) {
+          return 0
+        }
+
+        if (aDiff == null) {
+          return 1
+        }
+
+        if (bDiff == null) {
+          return -1
+        }
+
+        return (
+          aDiff - bDiff
+        )
+      }
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* Empty State                                                              */
+  /* ------------------------------------------------------------------------ */
+
   if (
-    actions.length === 0
+    sortedActions.length ===
+    0
   ) {
     return (
       <div className="rounded-lg border border-dashed border-border p-6 text-center">
-        <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-primary" />
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+          <CheckCircle2 className="h-5 w-5 text-primary" />
+        </div>
 
-        <p className="font-medium">
+        <p className="mt-3 font-medium">
           No open actions
         </p>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          There are no open or in-progress action items.
+          There are no open or
+          in-progress action
+          items.
         </p>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          asChild
+        >
+          <Link href="/actions">
+            View actions
+          </Link>
+        </Button>
       </div>
     )
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Actions                                                                  */
+  /* ------------------------------------------------------------------------ */
+
   return (
     <div className="space-y-3">
-      {actions.map(
+      {sortedActions.map(
         (action) => {
           const dueMeta =
             getDueMeta(
@@ -232,35 +328,76 @@ export function DashboardUpcomingActions({
           const DueIcon =
             dueMeta.icon
 
+          const isInProgress =
+            action.status ===
+            "in_progress"
+
           return (
             <div
               key={action.id}
-              className="rounded-xl border border-border bg-card p-4"
+              className={cn(
+                "group rounded-xl border bg-card p-4 transition-all",
+                "hover:bg-muted/20 hover:shadow-sm",
+                dueMeta.isOverdue
+                  ? "border-destructive/30 hover:border-destructive/50"
+                  : "border-border hover:border-border/80"
+              )}
             >
               <div className="flex items-start gap-3">
+                {/* ------------------------------------------------------ */}
+                {/* Status Indicator                                       */}
+                {/* ------------------------------------------------------ */}
 
-                <div className="mt-0.5 shrink-0">
-                  {action.status ===
-                  "in_progress" ? (
-                    <Circle className="h-5 w-5 text-warning" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-muted-foreground" />
+                <div
+                  className={cn(
+                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                    isInProgress
+                      ? "bg-warning/10"
+                      : "bg-muted"
                   )}
+                >
+                  <Circle
+                    className={cn(
+                      "h-4 w-4",
+                      isInProgress
+                        ? "fill-warning/20 text-warning"
+                        : "text-muted-foreground"
+                    )}
+                  />
                 </div>
 
+                {/* ------------------------------------------------------ */}
+                {/* Action Content                                         */}
+                {/* ------------------------------------------------------ */}
+
                 <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-foreground">
+                      {
+                        action.title
+                      }
+                    </p>
 
-                  <p className="font-semibold text-foreground">
-                    {
-                      action.title
-                    }
-                  </p>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                        isInProgress
+                          ? "bg-warning/10 text-warning"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {isInProgress
+                        ? "In Progress"
+                        : "Open"}
+                    </span>
+                  </div>
 
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {/* Vendor / Owner / Due */}
 
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
                     <Link
                       href={`/vendors/view/${action.vendorId}`}
-                      className="font-medium text-foreground hover:underline"
+                      className="font-medium text-foreground transition-colors hover:underline"
                     >
                       {
                         action.vendorName
@@ -268,8 +405,8 @@ export function DashboardUpcomingActions({
                     </Link>
 
                     {action.ownerName ? (
-                      <span className="inline-flex items-center gap-1">
-                        <UserRound className="h-3.5 w-3.5" />
+                      <span className="inline-flex items-center gap-1.5">
+                        <UserRound className="h-3.5 w-3.5 shrink-0" />
 
                         {
                           action.ownerName
@@ -279,11 +416,11 @@ export function DashboardUpcomingActions({
 
                     <span
                       className={cn(
-                        "inline-flex items-center gap-1 font-medium",
+                        "inline-flex items-center gap-1.5 font-medium",
                         dueMeta.tone
                       )}
                     >
-                      <DueIcon className="h-3.5 w-3.5" />
+                      <DueIcon className="h-3.5 w-3.5 shrink-0" />
 
                       {
                         dueMeta.label
@@ -291,28 +428,40 @@ export function DashboardUpcomingActions({
                     </span>
                   </div>
 
-                  <p className="mt-2 truncate text-xs text-muted-foreground">
-                    Meeting:{" "}
-                    {
-                      action.meetingTitle
-                    }
-                  </p>
-                </div>
+                  {/* Meeting Context */}
 
+                  <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="shrink-0">
+                      From:
+                    </span>
+
+                    <span className="truncate">
+                      {
+                        action.meetingTitle
+                      }
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           )
         }
       )}
 
-      <div className="pt-1">
+      {/* ---------------------------------------------------------------- */}
+      {/* View All                                                         */}
+      {/* ---------------------------------------------------------------- */}
+
+      <div className="flex justify-end border-t pt-3">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           asChild
         >
           <Link href="/actions">
-            View All Actions
+            View all actions
+
+            <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
       </div>
