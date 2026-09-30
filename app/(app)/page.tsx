@@ -7,11 +7,8 @@ import { useRouter } from "next/navigation"
 
 import {
   AlertCircle,
-  BarChart3,
   Building2,
   CalendarClock,
-  CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   Gauge,
   RefreshCw,
@@ -37,10 +34,11 @@ import {
   AlertDescription,
 } from "@/components/ui/alert"
 
-import { DashboardBudgetStatusChart } from "@/components/dashboard-budget-status-chart"
-import { DashboardVendorHealthChart } from "@/components/dashboard-vendor-health-chart"
-import { DashboardUpcomingMeetings } from "@/components/dashboard-upcoming-meetings"
-import { DashboardUpcomingActions } from "@/components/dashboard-upcoming-actions"
+import { DashboardBudgetStatusChart } from "@/components/dashboard/dashboard-budget-allocation-chart"
+import { DashboardVendorHealthChart } from "@/components/dashboard/dashboard-vendor-health-chart"
+import { DashboardUpcomingMeetings } from "@/components/dashboard/dashboard-upcoming-meetings"
+import { DashboardUpcomingActions } from "@/components/dashboard/dashboard-upcoming-actions"
+import { DashboardKpiSlaPerformance } from "@/components/dashboard/dashboard-kpi-sla-performance"
 
 type GradeDistribution = {
   A: number
@@ -889,98 +887,11 @@ export default function DashboardPage() {
 
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-[300px] w-full" />
             ) : (
-              <div className="space-y-5">
-
-                <div className="flex items-end justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Compliance Rate
-                    </p>
-
-                    <p className="mt-1 text-3xl font-bold">
-                      {performance
-                        ?.complianceRate !=
-                      null
-                        ? `${performance.complianceRate.toFixed(
-                            1
-                          )}%`
-                        : "—"}
-                    </p>
-                  </div>
-
-                  <BarChart3 className="h-7 w-7 text-muted-foreground" />
-                </div>
-
-                <Progress
-                  value={metPercent}
-                />
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Met
-                    </p>
-
-                    <p className="mt-1 text-xl font-semibold text-primary">
-                      {performance?.met ||
-                        0}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Missed
-                    </p>
-
-                    <p className="mt-1 text-xl font-semibold text-destructive">
-                      {performance
-                        ?.missed || 0}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Results
-                    </p>
-
-                    <p className="mt-1 text-xl font-semibold">
-                      {performance
-                        ?.measuredMetrics ||
-                        0}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="border-t pt-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      Active Metrics
-                    </span>
-
-                    <span className="font-medium">
-                      {performance
-                        ?.totalMetrics ||
-                        0}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      Result Window
-                    </span>
-
-                    <span className="font-medium">
-                      Last{" "}
-                      {performance
-                        ?.lookbackMonths ||
-                        0}{" "}
-                      months
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <DashboardKpiSlaPerformance
+                performance={performance}
+              />
             )}
           </CardContent>
         </Card>
