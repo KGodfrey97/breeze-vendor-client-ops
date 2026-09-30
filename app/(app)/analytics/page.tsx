@@ -1,7 +1,27 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
-import Link from "next/link"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import {
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
+import {
+  Activity,
+  BarChart3,
+  CheckCircle2,
+  ChevronRight,
+  CircleDashed,
+  Filter,
+  Gauge,
+  RefreshCw,
+  Target,
+  XCircle,
+} from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -9,1244 +29,2139 @@ import {
   Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle2,
-  Clock3,
-  Download,
-  Filter,
-  ShieldAlert,
-  TrendingUp,
-} from "lucide-react"
 
-import type { Database } from "@/lib/db-types"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { cn } from "@/lib/utils"
 
-type AnalyticsClaim = Database["public"]["Views"]["claims_with_patients"]["Row"]
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
-type DatePreset = "30d" | "90d" | "180d" | "365d" | "custom" | "all"
+type MetricStatus =
+  | "met"
+  | "missed"
+  | "awaiting"
 
-type DrilldownState = {
-  title: string
-  description: string
-  claimIds: string[]
-} | null
+type MetricType =
+  | "KPI"
+  | "SLA"
 
-type InsightCard = {
-  title: string
-  detail: string
-  tone: "positive" | "warning" | "neutral"
+type StatusFilter =
+  | "all"
+  | MetricStatus
+
+type TypeFilter =
+  | "all"
+  | MetricType
+
+type DateRange =
+  | "3"
+  | "6"
+  | "12"
+
+type AnalyticsMetric = {
+  id: string
+
+  vendorId: string
+  vendorName: string
+
+  lineOfBusinessId:
+    | string
+    | null
+
+  lineOfBusinessName:
+    | string
+    | null
+
+  metricName: string
+  metricType: MetricType
+
+  target:
+    | string
+    | null
+
+  actual:
+    | string
+    | null
+
+  status: MetricStatus
+
+  period:
+    | string
+    | null
 }
 
-const CHART_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-  "hsl(var(--destructive))",
-]
-
-const statusLabelMap: Record<string, string> = {
-  overturned: "Approved",
-  denied: "Denied",
-  processing: "Processing",
-  under_review: "Under Review",
+type AnalyticsVendor = {
+  id: string
+  name: string
 }
 
-const getRootHsl = (variableName: string) => {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim()
-  return value ? `hsl(${value})` : ""
+type AnalyticsLineOfBusiness = {
+  id: string
+  name: string
 }
 
-const formatDateInput = (date: Date) => {
-  const offset = date.getTimezoneOffset()
-  const localDate = new Date(date.getTime() - offset * 60_000)
-  return localDate.toISOString().slice(0, 10)
+type AnalyticsTrendPoint = {
+  period: string
+
+  complianceRate:
+    | number
+    | null
 }
 
-const startOfPreset = (preset: DatePreset) => {
-  const today = new Date()
-  const start = new Date(today)
+type VendorPerformance = {
+  vendorId: string
+  vendorName: string
 
-  switch (preset) {
-    case "30d":
-      start.setDate(today.getDate() - 30)
-      return start
-    case "90d":
-      start.setDate(today.getDate() - 90)
-      return start
-    case "180d":
-      start.setDate(today.getDate() - 180)
-      return start
-    case "365d":
-      start.setDate(today.getDate() - 365)
-      return start
-    default:
-      return null
+  complianceRate:
+    | number
+    | null
+
+  met: number
+  missed: number
+  awaiting: number
+}
+
+type AnalyticsData = {
+  summary: {
+    complianceRate:
+      | number
+      | null
+
+    met: number
+    missed: number
+    awaiting: number
+
+    measuredMetrics: number
+    totalMetrics: number
   }
-}
 
-const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value)
-const formatPercent = (value: number) => `${value.toFixed(1)}%`
+  filters: {
+    vendors: AnalyticsVendor[]
 
-const formatDays = (value: number) => {
-  if (!Number.isFinite(value) || value <= 0) return "-"
-  return `${value.toFixed(1)} days`
-}
-
-const formatDisplayDate = (value: string | null | undefined) => {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "-"
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
-const truncateReason = (reason: string | null | undefined) => {
-  const normalized = reason?.trim() || "Unknown"
-  return normalized.length > 42 ? `${normalized.slice(0, 42)}...` : normalized
-}
-
-const escapeCsvValue = (value: string | number | null | undefined) => {
-  const normalized = value == null ? "" : String(value)
-  if (normalized.includes(",") || normalized.includes("\"") || normalized.includes("\n")) {
-    return `"${normalized.replace(/"/g, "\"\"")}"`
+    linesOfBusiness:
+      AnalyticsLineOfBusiness[]
   }
-  return normalized
+
+  trend:
+    AnalyticsTrendPoint[]
+
+  vendorPerformance:
+    VendorPerformance[]
+
+  metrics:
+    AnalyticsMetric[]
 }
 
-const downloadCsv = (filename: string, rows: Array<Array<string | number | null | undefined>>) => {
-  const csvContent = rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n")
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.setAttribute("download", filename)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  window.URL.revokeObjectURL(url)
+type IconComponent =
+  React.ComponentType<{
+    className?: string
+  }>
+
+type FilterOption = {
+  value: string
+  label: string
 }
 
-const escapeHtml = (value: string | number | null | undefined) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
 
 export default function AnalyticsPage() {
+  const router =
+    useRouter()
 
-  const [claims, setClaims] = useState<AnalyticsClaim[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [datePreset, setDatePreset] = useState<DatePreset>("180d")
-  const [customDateFrom, setCustomDateFrom] = useState("")
-  const [customDateTo, setCustomDateTo] = useState("")
-  const [insuranceProviderFilter, setInsuranceProviderFilter] = useState("all")
-  const [claimTypeFilter, setClaimTypeFilter] = useState("all")
-  const [drilldown, setDrilldown] = useState<DrilldownState>(null)
-  const [drilldownSort, setDrilldownSort] = useState("latest")
+  const searchParams =
+    useSearchParams()
+
+  /* ------------------------------------------------------------------------ */
+  /* Initial URL State                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  const initialStatus =
+    getValidStatus(
+      searchParams.get(
+        "status"
+      )
+    )
+
+  const initialMetricType =
+    getValidMetricType(
+      searchParams.get(
+        "type"
+      )
+    )
+
+  const initialDateRange =
+    getValidDateRange(
+      searchParams.get(
+        "months"
+      )
+    )
+
+  const initialVendorId =
+    searchParams.get(
+      "vendorId"
+    ) || "all"
+
+  const initialLineOfBusinessId =
+    searchParams.get(
+      "lineOfBusinessId"
+    ) || "all"
+
+  const initialView =
+    searchParams.get(
+      "view"
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* State                                                                    */
+  /* ------------------------------------------------------------------------ */
+
+  const [
+    data,
+    setData,
+  ] =
+    useState<AnalyticsData | null>(
+      null
+    )
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
+    useState(true)
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    )
+
+  const [
+    status,
+    setStatus,
+  ] =
+    useState<StatusFilter>(
+      initialStatus
+    )
+
+  const [
+    metricType,
+    setMetricType,
+  ] =
+    useState<TypeFilter>(
+      initialMetricType
+    )
+
+  const [
+    vendorId,
+    setVendorId,
+  ] =
+    useState(
+      initialVendorId
+    )
+
+  const [
+    lineOfBusinessId,
+    setLineOfBusinessId,
+  ] =
+    useState(
+      initialLineOfBusinessId
+    )
+
+  const [
+    dateRange,
+    setDateRange,
+  ] =
+    useState<DateRange>(
+      initialDateRange
+    )
+
+  /* ------------------------------------------------------------------------ */
+  /* Sync State When URL Changes                                              */
+  /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
-    if (datePreset === "custom") return
-    const rangeStart = startOfPreset(datePreset)
-    setCustomDateFrom(rangeStart ? formatDateInput(rangeStart) : "")
-    setCustomDateTo(formatDateInput(new Date()))
-  }, [datePreset])
-
-  useEffect(() => {
-    const fetchClaims = async () => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        
-        const response = await fetch("/api/analytics", {
-          cache: "no-store",
-        })
-
-        const payload = await response.json()
-
-        if (!response.ok) {
-          throw new Error(payload.error || "Unable to load analytics.")
-        }
-
-        setClaims(payload.claims ?? [])
-      } catch (fetchError) {
-        console.error("Error loading analytics:", fetchError)
-        setError(
-          fetchError instanceof Error
-            ? fetchError.message
-            : "Unable to load analytics.",
+    setStatus(
+      getValidStatus(
+        searchParams.get(
+          "status"
         )
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    fetchClaims()
-  }, [])
-
-  const insuranceProviders = useMemo(() => {
-    return Array.from(
-      new Set(claims.map((claim) => claim.insurance_provider).filter((value): value is string => Boolean(value))),
-    ).sort((a, b) => a.localeCompare(b))
-  }, [claims])
-
-  const claimTypes = useMemo(() => {
-    return Array.from(new Set(claims.map((claim) => claim.appeal_type).filter((value): value is string => Boolean(value)))).sort(
-      (a, b) => a.localeCompare(b),
+      )
     )
-  }, [claims])
 
-  const filteredClaims = useMemo(() => {
-    return claims.filter((claim) => {
-      const createdAt = claim.created_at ? new Date(claim.created_at) : null
-      if (datePreset !== "all") {
-        const fromDate = customDateFrom ? new Date(`${customDateFrom}T00:00:00`) : null
-        const toDate = customDateTo ? new Date(`${customDateTo}T23:59:59`) : null
+    setMetricType(
+      getValidMetricType(
+        searchParams.get(
+          "type"
+        )
+      )
+    )
 
-        if (fromDate && createdAt && createdAt < fromDate) return false
-        if (toDate && createdAt && createdAt > toDate) return false
-      }
+    setDateRange(
+      getValidDateRange(
+        searchParams.get(
+          "months"
+        )
+      )
+    )
 
-      if (insuranceProviderFilter !== "all" && claim.insurance_provider !== insuranceProviderFilter) return false
-      if (claimTypeFilter !== "all" && claim.appeal_type !== claimTypeFilter) return false
+    setVendorId(
+      searchParams.get(
+        "vendorId"
+      ) || "all"
+    )
 
-      return true
-    })
-  }, [claims, claimTypeFilter, customDateFrom, customDateTo, datePreset, insuranceProviderFilter])
+    setLineOfBusinessId(
+      searchParams.get(
+        "lineOfBusinessId"
+      ) || "all"
+    )
+  }, [searchParams])
 
-  const analytics = useMemo(() => {
-    const approvedClaims = filteredClaims.filter((claim) => claim.status === "overturned")
-    const deniedClaims = filteredClaims.filter((claim) => claim.status === "denied")
-    const resolvedClaims = filteredClaims.filter((claim) => claim.status === "overturned" || claim.status === "denied")
+  /* ------------------------------------------------------------------------ */
+  /* Update URL                                                               */
+  /* ------------------------------------------------------------------------ */
 
-    const successRate = resolvedClaims.length > 0 ? (approvedClaims.length / resolvedClaims.length) * 100 : 0
+  const updateUrl =
+    useCallback(
+      (
+        updates: Record<
+          string,
+          string | null
+        >
+      ) => {
+        const params =
+          new URLSearchParams(
+            searchParams.toString()
+          )
 
-    const averageResolutionDays =
-      resolvedClaims.length > 0
-        ? resolvedClaims.reduce((sum, claim) => {
-            const createdAt = claim.created_at ? new Date(claim.created_at) : null
-            const resolvedAt = claim.updated_at ? new Date(claim.updated_at) : null
-            if (!createdAt || !resolvedAt) return sum
-            return sum + Math.max(0, (resolvedAt.getTime() - createdAt.getTime()) / 86_400_000)
-          }, 0) / resolvedClaims.length
-        : 0
+        Object.entries(
+          updates
+        ).forEach(
+          ([
+            key,
+            value,
+          ]) => {
+            if (
+              value === null ||
+              value === "" ||
+              value === "all"
+            ) {
+              params.delete(
+                key
+              )
+            } else {
+              params.set(
+                key,
+                value
+              )
+            }
+          }
+        )
 
-    const trendsMap = new Map<string, { label: string; submitted: number; approved: number }>()
-    filteredClaims.forEach((claim) => {
-      const createdAt = claim.created_at ? new Date(claim.created_at) : null
-      if (!createdAt) return
-      const label = createdAt.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-      })
+        /*
+         * Once the user manually
+         * changes a filter, the
+         * special dashboard view
+         * marker is no longer
+         * necessary.
+         */
 
-      if (!trendsMap.has(label)) {
-        trendsMap.set(label, { label, submitted: 0, approved: 0 })
-      }
-
-      const bucket = trendsMap.get(label)
-      if (!bucket) return
-      bucket.submitted += 1
-      if (claim.status === "overturned") bucket.approved += 1
-    })
-
-    const trendData = Array.from(trendsMap.values())
-
-    const denialReasonMap = new Map<string, { reason: string; count: number; claimIds: string[] }>()
-    deniedClaims.forEach((claim) => {
-      const reason = truncateReason(claim.denial_reason)
-      const current = denialReasonMap.get(reason) ?? { reason, count: 0, claimIds: [] }
-      current.count += 1
-      current.claimIds.push(claim.id)
-      denialReasonMap.set(reason, current)
-    })
-
-    const denialReasons = Array.from(denialReasonMap.values())
-      .sort((a, b) => b.count - a.count)
-      .map((entry) => ({
-        ...entry,
-        percentage: deniedClaims.length > 0 ? (entry.count / deniedClaims.length) * 100 : 0,
-      }))
-
-    const insuranceProviderMap = new Map<
-      string,
-      { provider: string; total: number; denied: number; deniedClaimIds: string[]; allClaimIds: string[] }
-    >()
-    filteredClaims.forEach((claim) => {
-      const provider = claim.insurance_provider || "Unknown"
-      const current = insuranceProviderMap.get(provider) ?? {
-        provider,
-        total: 0,
-        denied: 0,
-        deniedClaimIds: [],
-        allClaimIds: [],
-      }
-
-      current.total += 1
-      current.allClaimIds.push(claim.id)
-      if (claim.status === "denied") {
-        current.denied += 1
-        current.deniedClaimIds.push(claim.id)
-      }
-
-      insuranceProviderMap.set(provider, current)
-    })
-
-    const denialRateByInsurance = Array.from(insuranceProviderMap.values())
-      .map((entry) => ({
-        ...entry,
-        denialRate: entry.total > 0 ? (entry.denied / entry.total) * 100 : 0,
-      }))
-      .sort((a, b) => b.denialRate - a.denialRate)
-
-    const denialPattern = Array.from(
-      deniedClaims.reduce((map, claim) => {
-        const key = `${claim.insurance_provider || "Unknown"}::${truncateReason(claim.denial_reason)}`
-        const entry = map.get(key) ?? {
-          insuranceProvider: claim.insurance_provider || "Unknown",
-          denialReason: truncateReason(claim.denial_reason),
-          count: 0,
+        if (
+          Object.keys(
+            updates
+          ).some(
+            (key) =>
+              key !== "view"
+          )
+        ) {
+          params.delete(
+            "view"
+          )
         }
-        entry.count += 1
-        map.set(key, entry)
-        return map
-      }, new Map<string, { insuranceProvider: string; denialReason: string; count: number }>())
-        .values(),
-    ).sort((a, b) => b.count - a.count)[0]
 
-    const highestDenialProvider = denialRateByInsurance.filter((entry) => entry.total >= 2)[0]
+        const query =
+          params.toString()
 
-    const insights: InsightCard[] = []
-
-    if (highestDenialProvider) {
-      insights.push({
-        title: "Denial Pressure",
-        detail: `${highestDenialProvider.provider} has the highest denial rate at ${formatPercent(highestDenialProvider.denialRate)} across ${highestDenialProvider.total} claims.`,
-        tone: "warning",
-      })
-    }
-
-    if (denialPattern) {
-      insights.push({
-        title: "Actionable Pattern",
-        detail: `${denialPattern.insuranceProvider} is most often denying for “${denialPattern.denialReason}”. This pattern appears in ${denialPattern.count} claims.`,
-        tone: "neutral",
-      })
-    }
-
-    return {
-      totalClaims: filteredClaims.length,
-      approvedClaims: approvedClaims.length,
-      deniedClaims: deniedClaims.length,
-      pendingClaims: filteredClaims.filter((claim) => claim.status !== "overturned" && claim.status !== "denied").length,
-      successRate,
-      averageResolutionDays,
-      trendData,
-      denialReasons,
-      denialRateByInsurance,
-      insights,
-    }
-  }, [filteredClaims])
-
-  const drilldownClaims = useMemo(() => {
-    const sourceClaims = drilldown
-      ? filteredClaims.filter((claim) => drilldown.claimIds.includes(claim.id))
-      : filteredClaims
-
-    const sortedClaims = [...sourceClaims]
-
-    switch (drilldownSort) {
-      case "oldest":
-        sortedClaims.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
-        break
-      case "amount_desc":
-        sortedClaims.sort((a, b) => (b.original_claim_amount || 0) - (a.original_claim_amount || 0))
-        break
-      case "status":
-        sortedClaims.sort((a, b) => (a.status || "").localeCompare(b.status || ""))
-        break
-      default:
-        sortedClaims.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-    }
-
-    return sortedClaims.slice(0, 25)
-  }, [drilldown, drilldownSort, filteredClaims])
-
-  const handleResetFilters = () => {
-    setDatePreset("180d")
-    setInsuranceProviderFilter("all")
-    setClaimTypeFilter("all")
-    setDrilldown(null)
-  }
-
-  const reportDateStamp = useMemo(() => formatDateInput(new Date()), [])
-
-  const handleDownloadSummaryReport = () => {
-    const rows: Array<Array<string | number | null | undefined>> = [
-      ["Report", "Analytics Summary"],
-      ["Generated On", new Date().toLocaleString()],
-      ["Date Preset", datePreset],
-      ["Date From", customDateFrom || "All"],
-      ["Date To", customDateTo || "All"],
-      ["Insurance Provider Filter", insuranceProviderFilter],
-      ["Claim Type Filter", claimTypeFilter],
-      [],
-      ["Metric", "Value"],
-      ["Total Claims Submitted", analytics.totalClaims],
-      ["Approved Appeals", analytics.approvedClaims],
-      ["Denied Appeals", analytics.deniedClaims],
-      ["Pending Appeals", analytics.pendingClaims],
-      ["Appeal Success Rate", formatPercent(analytics.successRate)],
-      ["Average Time to Resolution", formatDays(analytics.averageResolutionDays)],
-      [],
-      ["Denial Rate by Insurance Provider"],
-      ["Insurance Provider", "Total Claims", "Denied Claims", "Denial Rate"],
-      ...analytics.denialRateByInsurance.map((entry) => [
-        entry.provider,
-        entry.total,
-        entry.denied,
-        formatPercent(entry.denialRate),
-      ]),
-      [],
-      ["Most Common Denial Reasons"],
-      ["Denial Reason", "Denied Claims", "Share of Denials"],
-      ...analytics.denialReasons.map((reason) => [reason.reason, reason.count, formatPercent(reason.percentage)]),
-      [],
-      ["Actionable Insights"],
-      ["Title", "Detail"],
-      ...analytics.insights.map((insight) => [insight.title, insight.detail]),
-    ]
-
-    downloadCsv(`analytics-summary-${reportDateStamp}.csv`, rows)
-  }
-
-  const handleDownloadClaimsReport = () => {
-    const sourceClaims = drilldown
-      ? filteredClaims.filter((claim) => drilldown.claimIds.includes(claim.id))
-      : filteredClaims
-
-    const rows: Array<Array<string | number | null | undefined>> = [
-      ["Report", drilldown ? drilldown.title : "Filtered Claims Report"],
-      ["Generated On", new Date().toLocaleString()],
-      ["Date Preset", datePreset],
-      ["Date From", customDateFrom || "All"],
-      ["Date To", customDateTo || "All"],
-      ["Insurance Provider Filter", insuranceProviderFilter],
-      ["Claim Type Filter", claimTypeFilter],
-      [],
+        router.replace(
+          query
+            ? `/analytics?${query}`
+            : "/analytics",
+          {
+            scroll: false,
+          }
+        )
+      },
       [
-        "Claim ID",
-        "Patient Name",
-        "Insurance Provider",
-        "Claim Type",
-        "Status",
-        "Denial Reason",
-        "Original Claim Amount",
-        "Created At",
-        "Updated At",
-      ],
-      ...sourceClaims.map((claim) => [
-        claim.claim_id,
-        [claim.first_name, claim.last_name].filter(Boolean).join(" "),
-        claim.insurance_provider,
-        claim.appeal_type,
-        statusLabelMap[claim.status || ""] || claim.status || "Unknown",
-        claim.denial_reason,
-        claim.original_claim_amount,
-        claim.created_at,
-        claim.updated_at,
-      ]),
-    ]
+        router,
+        searchParams,
+      ]
+    )
 
-    downloadCsv(`analytics-claims-${reportDateStamp}.csv`, rows)
+  /* ------------------------------------------------------------------------ */
+  /* API Query                                                                */
+  /* ------------------------------------------------------------------------ */
+
+  const buildApiQuery =
+    useCallback(() => {
+      const params =
+        new URLSearchParams()
+
+      params.set(
+        "months",
+        dateRange
+      )
+
+      if (
+        status !== "all"
+      ) {
+        params.set(
+          "status",
+          status
+        )
+      }
+
+      if (
+        metricType !== "all"
+      ) {
+        params.set(
+          "type",
+          metricType
+        )
+      }
+
+      if (
+        vendorId !== "all"
+      ) {
+        params.set(
+          "vendorId",
+          vendorId
+        )
+      }
+
+      if (
+        lineOfBusinessId !==
+        "all"
+      ) {
+        params.set(
+          "lineOfBusinessId",
+          lineOfBusinessId
+        )
+      }
+
+      return params.toString()
+    }, [
+      dateRange,
+      status,
+      metricType,
+      vendorId,
+      lineOfBusinessId,
+    ])
+
+  /* ------------------------------------------------------------------------ */
+  /* Load Analytics                                                           */
+  /* ------------------------------------------------------------------------ */
+
+  const loadAnalytics =
+    useCallback(
+      async () => {
+        try {
+          setIsLoading(
+            true
+          )
+
+          setError(
+            null
+          )
+
+          const query =
+            buildApiQuery()
+
+          const response =
+            await fetch(
+              `/api/analytics?${query}`,
+              {
+                cache:
+                  "no-store",
+              }
+            )
+
+          if (
+            !response.ok
+          ) {
+            const body =
+              await response
+                .json()
+                .catch(
+                  () => null
+                )
+
+            throw new Error(
+              body?.error ||
+                "Unable to load analytics"
+            )
+          }
+
+          const result =
+            (await response.json()) as AnalyticsData
+
+          setData(
+            result
+          )
+        } catch (error) {
+          console.error(
+            error
+          )
+
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Analytics data could not be loaded."
+          )
+        } finally {
+          setIsLoading(
+            false
+          )
+        }
+      },
+      [
+        buildApiQuery,
+      ]
+    )
+
+  useEffect(() => {
+    void loadAnalytics()
+  }, [loadAnalytics])
+
+  /* ------------------------------------------------------------------------ */
+  /* Derived Data                                                             */
+  /* ------------------------------------------------------------------------ */
+
+  const summary =
+    data?.summary
+
+  const coverageRate =
+    summary &&
+    summary.totalMetrics > 0
+      ? (
+          summary.measuredMetrics /
+          summary.totalMetrics
+        ) *
+        100
+      : 0
+
+  const hasActiveFilters =
+    status !== "all" ||
+    metricType !== "all" ||
+    vendorId !== "all" ||
+    lineOfBusinessId !==
+      "all" ||
+    dateRange !== "6"
+
+  /* ------------------------------------------------------------------------ */
+  /* Filter Handlers                                                          */
+  /* ------------------------------------------------------------------------ */
+
+  const handleDateRangeChange = (
+    value: string
+  ) => {
+    const next =
+      getValidDateRange(
+        value
+      )
+
+    setDateRange(
+      next
+    )
+
+    updateUrl({
+      months:
+        next === "6"
+          ? null
+          : next,
+    })
   }
 
-  const handleDownloadExecutivePdf = () => {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900")
+  const handleMetricTypeChange = (
+    value: string
+  ) => {
+    const next =
+      getValidMetricType(
+        value
+      )
 
-    if (!printWindow) {
-      window.alert("Unable to open the executive report. Please allow pop-ups and try again.")
-      return
-    }
+    setMetricType(
+      next
+    )
 
-    const reportColors = {
-      ink: getRootHsl("--foreground"),
-      muted: getRootHsl("--muted-foreground"),
-      line: getRootHsl("--border"),
-      panel: getRootHsl("--muted"),
-      teal: getRootHsl("--primary"),
-      orange: getRootHsl("--warning"),
-      red: getRootHsl("--destructive"),
-      green: getRootHsl("--primary-dark"),
-      secondary: getRootHsl("--secondary"),
-    }
-
-    const topDenialProviders = analytics.denialRateByInsurance.slice(0, 5)
-    const topDenialReasons = analytics.denialReasons.slice(0, 5)
-
-    const filterSummary = [
-      `Date preset: ${datePreset}`,
-      `Date from: ${customDateFrom || "All"}`,
-      `Date to: ${customDateTo || "All"}`,
-      `Insurance provider: ${insuranceProviderFilter}`,
-      `Claim type: ${claimTypeFilter}`,
-    ]
-
-    const reportHtml = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Executive Appeals Report</title>
-          <style>
-            :root {
-              --ink: ${reportColors.ink};
-              --muted: ${reportColors.muted};
-              --line: ${reportColors.line};
-              --paper: #ffffff;
-              --panel: ${reportColors.panel};
-              --teal: ${reportColors.teal};
-              --orange: ${reportColors.orange};
-              --red: ${reportColors.red};
-              --green: ${reportColors.green};
-            }
-            * { box-sizing: border-box; }
-            body {
-              margin: 0;
-              background: #eef4f3;
-              color: var(--ink);
-              font-family: Arial, Helvetica, sans-serif;
-            }
-            .report {
-              max-width: 960px;
-              margin: 0 auto;
-              padding: 32px;
-              background: var(--paper);
-            }
-            .hero {
-              padding: 28px;
-              border-radius: 24px;
-              background: linear-gradient(135deg, ${reportColors.teal} 0%, ${reportColors.secondary} 100%);
-              color: white;
-            }
-            .hero h1 {
-              margin: 0 0 10px;
-              font-size: 32px;
-              line-height: 1.1;
-            }
-            .hero p {
-              margin: 0;
-              font-size: 15px;
-              line-height: 1.6;
-              color: rgba(255,255,255,0.88);
-            }
-            .meta {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-              gap: 10px 24px;
-              margin-top: 20px;
-              font-size: 13px;
-              color: rgba(255,255,255,0.9);
-            }
-            .section {
-              margin-top: 28px;
-            }
-            .section h2 {
-              margin: 0 0 12px;
-              font-size: 18px;
-            }
-            .section p.section-copy {
-              margin: 0 0 16px;
-              color: var(--muted);
-              font-size: 14px;
-              line-height: 1.6;
-            }
-            .kpis {
-              display: grid;
-              grid-template-columns: repeat(4, minmax(0, 1fr));
-              gap: 14px;
-            }
-            .kpi {
-              border: 1px solid var(--line);
-              border-radius: 18px;
-              padding: 18px;
-              background: var(--panel);
-            }
-            .kpi .label {
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.08em;
-              color: var(--muted);
-            }
-            .kpi .value {
-              margin-top: 8px;
-              font-size: 28px;
-              font-weight: 700;
-            }
-            .kpi .detail {
-              margin-top: 8px;
-              font-size: 13px;
-              color: var(--muted);
-            }
-            .grid {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-              gap: 18px;
-            }
-            .panel {
-              border: 1px solid var(--line);
-              border-radius: 20px;
-              padding: 20px;
-              background: white;
-            }
-            .panel h3 {
-              margin: 0 0 12px;
-              font-size: 15px;
-            }
-            .list {
-              margin: 0;
-              padding: 0;
-              list-style: none;
-            }
-            .list li {
-              display: flex;
-              justify-content: space-between;
-              gap: 16px;
-              padding: 10px 0;
-              border-bottom: 1px solid var(--line);
-              font-size: 14px;
-            }
-            .list li:last-child { border-bottom: 0; }
-            .insights {
-              display: grid;
-              gap: 12px;
-            }
-            .insight {
-              border: 1px solid var(--line);
-              border-left-width: 6px;
-              border-radius: 16px;
-              padding: 14px 16px;
-              background: var(--panel);
-            }
-            .insight h4 {
-              margin: 0 0 6px;
-              font-size: 14px;
-            }
-            .insight p {
-              margin: 0;
-              font-size: 13px;
-              line-height: 1.6;
-              color: var(--muted);
-            }
-            .insight.positive { border-left-color: var(--green); }
-            .insight.warning { border-left-color: var(--orange); }
-            .insight.neutral { border-left-color: var(--teal); }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 13px;
-            }
-            th, td {
-              text-align: left;
-              padding: 10px 12px;
-              border-bottom: 1px solid var(--line);
-              vertical-align: top;
-            }
-            th {
-              font-size: 11px;
-              text-transform: uppercase;
-              letter-spacing: 0.08em;
-              color: var(--muted);
-            }
-            .footer {
-              margin-top: 24px;
-              font-size: 12px;
-              color: var(--muted);
-            }
-            @media print {
-              body { background: white; }
-              .report { max-width: none; padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="report">
-            <section class="hero">
-              <h1>Executive Appeals Report</h1>
-              <p>Leadership-ready summary of appeal performance, denial patterns, and operational follow-through for the current analytics filters.</p>
-              <div class="meta">
-                <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString())}</div>
-                <div><strong>Total filtered claims:</strong> ${escapeHtml(formatNumber(analytics.totalClaims))}</div>
-                ${filterSummary.map((item) => `<div>${escapeHtml(item)}</div>`).join("")}
-              </div>
-            </section>
-
-            <section class="section">
-              <h2>Executive KPI Summary</h2>
-              <div class="kpis">
-                <div class="kpi">
-                  <div class="label">Claims Submitted</div>
-                  <div class="value">${escapeHtml(formatNumber(analytics.totalClaims))}</div>
-                  <div class="detail">${escapeHtml(formatNumber(analytics.pendingClaims))} in progress</div>
-                </div>
-                <div class="kpi">
-                  <div class="label">Approved Appeals</div>
-                  <div class="value">${escapeHtml(formatNumber(analytics.approvedClaims))}</div>
-                  <div class="detail">Resolved as approved</div>
-                </div>
-                <div class="kpi">
-                  <div class="label">Denied Appeals</div>
-                  <div class="value">${escapeHtml(formatNumber(analytics.deniedClaims))}</div>
-                  <div class="detail">Final denials</div>
-                </div>
-                <div class="kpi">
-                  <div class="label">Success Rate</div>
-                  <div class="value">${escapeHtml(formatPercent(analytics.successRate))}</div>
-                  <div class="detail">Avg resolution: ${escapeHtml(formatDays(analytics.averageResolutionDays))}</div>
-                </div>
-              </div>
-            </section>
-
-            <section class="section">
-              <h2>Operational Highlights</h2>
-              <p class="section-copy">This section focuses on the strongest current performance signals and where administrative teams may want to intervene next.</p>
-              <div class="insights">
-                ${
-                  analytics.insights.length > 0
-                    ? analytics.insights
-                        .map(
-                          (insight) => `
-                            <div class="insight ${escapeHtml(insight.tone)}">
-                              <h4>${escapeHtml(insight.title)}</h4>
-                              <p>${escapeHtml(insight.detail)}</p>
-                            </div>
-                          `,
-                        )
-                        .join("")
-                    : `<div class="insight neutral"><h4>No major insights yet</h4><p>There is not enough filtered data to generate executive insights for this view.</p></div>`
-                }
-              </div>
-            </section>
-
-            <section class="section">
-              <div class="grid">
-                <div class="panel">
-                  <h3>Highest Denial Rate by Insurance Provider</h3>
-                  <ul class="list">
-                    ${
-                      topDenialProviders.length > 0
-                        ? topDenialProviders
-                            .map(
-                              (entry) => `
-                                <li>
-                                  <span>${escapeHtml(entry.provider)}</span>
-                                  <strong>${escapeHtml(formatPercent(entry.denialRate))}</strong>
-                                </li>
-                              `,
-                            )
-                            .join("")
-                        : `<li><span>No provider data available</span><strong>-</strong></li>`
-                    }
-                  </ul>
-                </div>
-                <div class="panel">
-                  <h3>Most Common Denial Reasons</h3>
-                  <ul class="list">
-                    ${
-                      topDenialReasons.length > 0
-                        ? topDenialReasons
-                            .map(
-                              (reason) => `
-                                <li>
-                                  <span>${escapeHtml(reason.reason)}</span>
-                                  <strong>${escapeHtml(formatPercent(reason.percentage))}</strong>
-                                </li>
-                              `,
-                            )
-                            .join("")
-                        : `<li><span>No denial reasons available</span><strong>-</strong></li>`
-                    }
-                  </ul>
-                </div>
-              </div>
-            </section>
-
-            <p class="footer">This report reflects the currently applied analytics filters and is intended for executive review, planning, and operational follow-up.</p>
-          </div>
-          <script>
-            setTimeout(() => {
-              window.print();
-            }, 300); // wait 300ms for rendering
-          </script>
-        </body>
-      </html>
-    `
-
-    printWindow.document.open()
-    printWindow.document.write(reportHtml)
-    printWindow.document.close()
+    updateUrl({
+      type:
+        next === "all"
+          ? null
+          : next,
+    })
   }
 
-  if (isLoading) {
-    return (
-      <div className="app-page">
-        <div className="space-y-5">
-          <Skeleton className="h-40 w-full rounded-2xl" />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-36 rounded-2xl" />
-            ))}
-          </div>
-          <div className="grid gap-6 xl:grid-cols-3">
-            <Skeleton className="h-[360px] rounded-2xl xl:col-span-2" />
-            <Skeleton className="h-[360px] rounded-2xl" />
-          </div>
-        </div>
-      </div>
+  const handleStatusChange = (
+    value: StatusFilter
+  ) => {
+    setStatus(
+      value
+    )
+
+    updateUrl({
+      status:
+        value === "all"
+          ? null
+          : value,
+    })
+  }
+
+  const handleVendorChange = (
+    value: string
+  ) => {
+    setVendorId(
+      value
+    )
+
+    updateUrl({
+      vendorId:
+        value === "all"
+          ? null
+          : value,
+    })
+  }
+
+  /*
+   * IMPORTANT:
+   *
+   * A vendor belongs to one LOB.
+   * Therefore, changing LOB must
+   * clear the currently selected
+   * vendor.
+   *
+   * Otherwise we could end up with:
+   *
+   * LOB = Landscaping
+   * Vendor = Vendor from Security
+   *
+   * which would produce an invalid
+   * filter combination.
+   */
+
+  const handleLineOfBusinessChange = (
+    value: string
+  ) => {
+    setLineOfBusinessId(
+      value
+    )
+
+    setVendorId(
+      "all"
+    )
+
+    updateUrl({
+      lineOfBusinessId:
+        value === "all"
+          ? null
+          : value,
+
+      vendorId:
+        null,
+    })
+  }
+
+  const clearFilters =
+    () => {
+      setStatus(
+        "all"
+      )
+
+      setMetricType(
+        "all"
+      )
+
+      setVendorId(
+        "all"
+      )
+
+      setLineOfBusinessId(
+        "all"
+      )
+
+      setDateRange(
+        "6"
+      )
+
+      router.replace(
+        "/analytics",
+        {
+          scroll: false,
+        }
+      )
+    }
+
+  /* ------------------------------------------------------------------------ */
+  /* Vendor Navigation                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  const openVendor = (
+    id: string
+  ) => {
+    router.push(
+      `/vendors/view/${id}`
     )
   }
 
-  if (error) {
-    return (
-      <div className="app-page">
-        <div className="max-w-4xl">
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </div>
-      </div>
-    )
-  }
+  /* ------------------------------------------------------------------------ */
+  /* Render                                                                   */
+  /* ------------------------------------------------------------------------ */
 
   return (
-    <div className="app-page">
-      <div className="space-y-5">
+    <div className="space-y-6 p-6">
+      {/* -------------------------------------------------------------- */}
+      {/* Header                                                         */}
+      {/* -------------------------------------------------------------- */}
 
-        <Card className="app-surface bg-secondary text-secondary-foreground">
-          <CardHeader className="pb-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="text-xl">Filters & Drill Controls</CardTitle>
-                <CardDescription className="text-secondary-foreground/70">
-                  Slice your analytics by time period, insurance provider, and claim type.
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" className="bg-background text-secondary hover:bg-muted" onClick={handleDownloadExecutivePdf}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Executive PDF
-                </Button>
-                <Button variant="secondary" className="bg-background text-secondary hover:bg-muted" onClick={handleDownloadSummaryReport}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Summary
-                </Button>
-                <Button variant="secondary" className="bg-background text-secondary hover:bg-muted" onClick={handleDownloadClaimsReport}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Claims
-                </Button>
-                <Button variant="secondary" className="bg-background text-secondary hover:bg-muted" onClick={handleResetFilters}>
-                  Reset Filters
-                </Button>
-              </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Analytics
+          </h1>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            Analyze KPI and SLA
+            performance across your
+            vendors.
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            void loadAnalytics()
+          }
+          disabled={
+            isLoading
+          }
+        >
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${
+              isLoading
+                ? "animate-spin"
+                : ""
+            }`}
+          />
+
+          Refresh
+        </Button>
+      </div>
+
+      {/* -------------------------------------------------------------- */}
+      {/* Filters                                                        */}
+      {/* -------------------------------------------------------------- */}
+
+      <Card className="app-surface">
+        <CardContent className="pt-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end">
+            <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {/* Date Range */}
+
+              <FilterSelect
+                label="Date Range"
+                value={
+                  dateRange
+                }
+                onValueChange={
+                  handleDateRangeChange
+                }
+                options={[
+                  {
+                    value: "3",
+                    label:
+                      "Last 3 months",
+                  },
+                  {
+                    value: "6",
+                    label:
+                      "Last 6 months",
+                  },
+                  {
+                    value: "12",
+                    label:
+                      "Last 12 months",
+                  },
+                ]}
+              />
+
+              {/* Line of Business */}
+
+              <FilterSelect
+                label="Line of Business"
+                value={
+                  lineOfBusinessId
+                }
+                onValueChange={
+                  handleLineOfBusinessChange
+                }
+                options={[
+                  {
+                    value: "all",
+                    label:
+                      "All lines",
+                  },
+
+                  ...(
+                    data?.filters
+                      .linesOfBusiness ||
+                    []
+                  ).map(
+                    (lob) => ({
+                      value:
+                        lob.id,
+
+                      label:
+                        lob.name,
+                    })
+                  ),
+                ]}
+              />
+
+              {/* Vendor */}
+
+              <FilterSelect
+                label="Vendor"
+                value={
+                  vendorId
+                }
+                onValueChange={
+                  handleVendorChange
+                }
+                options={[
+                  {
+                    value: "all",
+                    label:
+                      "All vendors",
+                  },
+
+                  ...(
+                    data?.filters
+                      .vendors ||
+                    []
+                  ).map(
+                    (vendor) => ({
+                      value:
+                        vendor.id,
+
+                      label:
+                        vendor.name,
+                    })
+                  ),
+                ]}
+              />
+
+              {/* Metric Type */}
+
+              <FilterSelect
+                label="Metric Type"
+                value={
+                  metricType
+                }
+                onValueChange={
+                  handleMetricTypeChange
+                }
+                options={[
+                  {
+                    value: "all",
+                    label:
+                      "KPI + SLA",
+                  },
+                  {
+                    value: "KPI",
+                    label:
+                      "KPI",
+                  },
+                  {
+                    value: "SLA",
+                    label:
+                      "SLA",
+                  },
+                ]}
+              />
+
+              {/* Status */}
+
+              <FilterSelect
+                label="Status"
+                value={
+                  status
+                }
+                onValueChange={(
+                  value
+                ) =>
+                  handleStatusChange(
+                    getValidStatus(
+                      value
+                    )
+                  )
+                }
+                options={[
+                  {
+                    value: "all",
+                    label:
+                      "All statuses",
+                  },
+                  {
+                    value: "met",
+                    label:
+                      "Met",
+                  },
+                  {
+                    value:
+                      "missed",
+                    label:
+                      "Missed",
+                  },
+                  {
+                    value:
+                      "awaiting",
+                    label:
+                      "Awaiting",
+                  },
+                ]}
+              />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2">
-                <LabelText>Time Range</LabelText>
-                <Select value={datePreset} onValueChange={(value) => setDatePreset(value as DatePreset)}>
-                  <SelectTrigger className="border-secondary-light/30 bg-secondary text-secondary-foreground">
-                    <SelectValue placeholder="Select range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30d">Last 30 days</SelectItem>
-                    <SelectItem value="90d">Last 90 days</SelectItem>
-                    <SelectItem value="180d">Last 6 months</SelectItem>
-                    <SelectItem value="365d">Last 12 months</SelectItem>
-                    <SelectItem value="custom">Custom range</SelectItem>
-                    <SelectItem value="all">All time</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <LabelText>Insurance Provider</LabelText>
-                <Select value={insuranceProviderFilter} onValueChange={setInsuranceProviderFilter}>
-                  <SelectTrigger className="border-secondary-light/30 bg-secondary text-secondary-foreground">
-                    <SelectValue placeholder="All insurance providers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All insurance providers</SelectItem>
-                    {insuranceProviders.map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {provider}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <LabelText>Claim Type</LabelText>
-                <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
-                  <SelectTrigger className="border-secondary-light/30 bg-secondary text-secondary-foreground">
-                    <SelectValue placeholder="All claim types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All claim types</SelectItem>
-                    {claimTypes.map((claimType) => (
-                      <SelectItem key={claimType} value={claimType}>
-                        {claimType}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="space-y-2">
-                  <LabelText>Date From</LabelText>
-                  <Input
-                    type="date"
-                    value={customDateFrom}
-                    onChange={(event) => {
-                      setDatePreset("custom")
-                      setCustomDateFrom(event.target.value)
-                    }}
-                    className="border-secondary-light/30 bg-secondary text-secondary-foreground [color-scheme:dark]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <LabelText>Date To</LabelText>
-                  <Input
-                    type="date"
-                    value={customDateTo}
-                    onChange={(event) => {
-                      setDatePreset("custom")
-                      setCustomDateTo(event.target.value)
-                    }}
-                    className="border-secondary-light/30 bg-secondary text-secondary-foreground [color-scheme:dark]"
-                  />
-                </div>
-              </div>
+
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={
+                  clearFilters
+                }
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          {/* Dashboard Drill-down */}
+
+          {(initialStatus !==
+            "all" ||
+            initialView ===
+              "coverage") && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+
+              <span className="text-muted-foreground">
+                Dashboard drill-down:
+              </span>
+
+              <span className="font-medium">
+                {initialView ===
+                "coverage"
+                  ? "Measurement Coverage"
+                  : formatStatus(
+                      initialStatus
+                    )}
+              </span>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </CardContent>
+      </Card>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="Total Claims Submitted"
-            value={formatNumber(analytics.totalClaims)}
-            detail={`${formatNumber(analytics.pendingClaims)} still in progress`}
-            icon={<Filter className="h-5 w-5" />}
-            accent="teal"
-          />
-          <MetricCard
-            title="Approved Appeals"
-            value={formatNumber(analytics.approvedClaims)}
-            detail="Overturned / approved outcomes"
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            accent="green"
-          />
-          <MetricCard
-            title="Denied Appeals"
-            value={formatNumber(analytics.deniedClaims)}
-            detail="Final denials in filtered set"
-            icon={<ShieldAlert className="h-5 w-5" />}
-            accent="red"
-          />
-          <MetricCard
-            title="Average Time to Resolution"
-            value={formatDays(analytics.averageResolutionDays)}
-            detail={`Success rate: ${formatPercent(analytics.successRate)}`}
-            icon={<Clock3 className="h-5 w-5" />}
-            accent="orange"
-          />
-        </section>
+      {/* -------------------------------------------------------------- */}
+      {/* Error                                                          */}
+      {/* -------------------------------------------------------------- */}
 
-        <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-          <Card className="app-surface">
-            <CardHeader>
-              <CardTitle>Appeals Submitted vs Approved Over Time</CardTitle>
-              <CardDescription>Use this trend to spot seasonal volume shifts and approval momentum.</CardDescription>
-            </CardHeader>
-            <CardContent className="h-[360px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={analytics.trendData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--popover))",
-                      borderColor: "hsl(var(--border))",
-                      borderRadius: "var(--radius)",
-                      color: "hsl(var(--popover-foreground))",
-                    }}
-                  />
-                  <Line type="monotone" dataKey="submitted" stroke="hsl(var(--chart-4))" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                  <Line type="monotone" dataKey="approved" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">
+            {error}
+          </p>
+        </div>
+      )}
 
-          <Card className="app-surface">
-            <CardHeader>
-              <CardTitle>Denial Reasons Distribution</CardTitle>
-              <CardDescription>Click a slice to inspect the underlying denied claims.</CardDescription>
-            </CardHeader>
-            <CardContent className="h-[360px]">
-              {analytics.denialReasons.length === 0 ? (
-                <EmptyState message="No denied claims are available in the current filtered view." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analytics.denialReasons}
-                      dataKey="count"
-                      nameKey="reason"
-                      innerRadius={60}
-                      outerRadius={105}
-                      paddingAngle={3}
-                      onClick={(entry) => {
-                        if (!entry?.claimIds) return
-                        setDrilldown({
-                          title: `Denied claims for ${entry.reason}`,
-                          description: `${entry.count} denied claims in this denial reason group.`,
-                          claimIds: entry.claimIds,
-                        })
-                      }}
-                    >
-                      {analytics.denialReasons.map((entry, index) => (
-                        <Cell key={entry.reason} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number, _name, payload) => [`${value} claims`, payload.payload.reason]} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </section>
+      {/* -------------------------------------------------------------- */}
+      {/* Summary                                                        */}
+      {/* -------------------------------------------------------------- */}
 
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <Card className="app-surface">
-            <CardHeader>
-              <CardTitle>Denial Rate by Insurance Provider</CardTitle>
-              <CardDescription>Click a bar to see which claims are driving denial pressure for each payer.</CardDescription>
-            </CardHeader>
-            <CardContent className="h-[360px]">
-              {analytics.denialRateByInsurance.length === 0 ? (
-                <EmptyState message="No insurance provider data is available for the current filter set." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.denialRateByInsurance.slice(0, 8)} layout="vertical" margin={{ left: 16, right: 16 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                    <XAxis type="number" tickFormatter={(value) => `${value}%`} tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis dataKey="provider" type="category" tickLine={false} axisLine={false} width={120} stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip
-                      formatter={(value: number) => formatPercent(value)}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        borderColor: "hsl(var(--border))",
-                        borderRadius: "var(--radius)",
-                        color: "hsl(var(--popover-foreground))",
-                      }}
-                    />
-                    <Bar
-                      dataKey="denialRate"
-                      fill="hsl(var(--destructive))"
-                      radius={[0, 12, 12, 0]}
-                      onClick={(entry) => {
-                        if (!entry?.allClaimIds) return
-                        setDrilldown({
-                          title: `${entry.provider} claims`,
-                          description: `${entry.denied} denied out of ${entry.total} total claims for this insurance provider.`,
-                          claimIds: entry.allClaimIds,
-                        })
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <SummaryCard
+          title="Compliance Rate"
+          value={
+            summary
+              ?.complianceRate !=
+            null
+              ? `${summary.complianceRate.toFixed(
+                  1
+                )}%`
+              : "—"
+          }
+          description="Measured metrics meeting target"
+          icon={
+            Gauge
+          }
+          loading={
+            isLoading
+          }
+        />
 
-          <Card className="app-surface">
-            <CardHeader>
-              <CardTitle>Common Denial Reasons</CardTitle>
-              <CardDescription>The most frequent denial categories in the active filter set.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {analytics.denialReasons.length === 0 ? (
-                <EmptyState message="No denial reasons to summarize right now." compact />
-              ) : (
-                analytics.denialReasons.slice(0, 5).map((reason, index) => (
-                  <button
-                    key={reason.reason}
-                    type="button"
-                    onClick={() =>
-                      setDrilldown({
-                        title: `Claims denied for ${reason.reason}`,
-                        description: `${reason.count} denied claims with this reason.`,
-                        claimIds: reason.claimIds,
-                      })
-                    }
-                    className="flex w-full items-center justify-between rounded-lg border border-border bg-muted px-4 py-3 text-left transition hover:border-primary/30 hover:bg-primary/5">
-                    <div className="pr-4">
-                      <p className="text-sm font-medium text-foreground">{index + 1}. {reason.reason}</p>
-                      <p className="text-xs text-muted-foreground">{reason.count} denied claims</p>
-                    </div>
-                    <Badge variant="outline" className="border-border bg-card">
-                      {formatPercent(reason.percentage)}
-                    </Badge>
-                  </button>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </section>
+        <SummaryCard
+          title="Met"
+          value={
+            summary?.met ??
+            0
+          }
+          description="Metrics meeting target"
+          icon={
+            CheckCircle2
+          }
+          loading={
+            isLoading
+          }
+          active={
+            status ===
+            "met"
+          }
+          onClick={() =>
+            handleStatusChange(
+              status ===
+                "met"
+                ? "all"
+                : "met"
+            )
+          }
+        />
+
+        <SummaryCard
+          title="Missed"
+          value={
+            summary?.missed ??
+            0
+          }
+          description="Metrics below target"
+          icon={
+            XCircle
+          }
+          loading={
+            isLoading
+          }
+          active={
+            status ===
+            "missed"
+          }
+          onClick={() =>
+            handleStatusChange(
+              status ===
+                "missed"
+                ? "all"
+                : "missed"
+            )
+          }
+        />
+
+        <SummaryCard
+          title="Awaiting"
+          value={
+            summary?.awaiting ??
+            0
+          }
+          description="Metrics without a result"
+          icon={
+            CircleDashed
+          }
+          loading={
+            isLoading
+          }
+          active={
+            status ===
+            "awaiting"
+          }
+          onClick={() =>
+            handleStatusChange(
+              status ===
+                "awaiting"
+                ? "all"
+                : "awaiting"
+            )
+          }
+        />
+
+        <SummaryCard
+          title="Coverage"
+          value={`${coverageRate.toFixed(
+            0
+          )}%`}
+          description={`${
+            summary
+              ?.measuredMetrics ??
+            0
+          } of ${
+            summary
+              ?.totalMetrics ??
+            0
+          } metrics`}
+          icon={
+            Target
+          }
+          loading={
+            isLoading
+          }
+        />
+      </div>
+
+      {/* -------------------------------------------------------------- */}
+      {/* Charts                                                         */}
+      {/* -------------------------------------------------------------- */}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* Compliance Trend */}
 
         <Card className="app-surface">
           <CardHeader>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle>{drilldown ? drilldown.title : "Filtered Claims"}</CardTitle>
-                <CardDescription>
-                  {drilldown ? drilldown.description : "Review the individual claims behind your current analytics filters."}
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {drilldown && (
-                  <Button variant="outline" onClick={() => setDrilldown(null)}>
-                    Clear Drill Down
-                  </Button>
-                )}
-                <Select value={drilldownSort} onValueChange={setDrilldownSort}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Sort claims" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="latest">Newest first</SelectItem>
-                    <SelectItem value="oldest">Oldest first</SelectItem>
-                    <SelectItem value="amount_desc">Highest amount</SelectItem>
-                    <SelectItem value="status">Status</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <CardTitle>
+              Compliance Trend
+            </CardTitle>
+
+            <CardDescription>
+              KPI / SLA compliance
+              over the selected
+              reporting period
+            </CardDescription>
           </CardHeader>
+
           <CardContent>
-            {drilldownClaims.length === 0 ? (
-              <EmptyState message="No claims match the current filter combination." compact />
+            {isLoading ? (
+              <Skeleton className="h-[300px] w-full" />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-y-2">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Claim</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Patient</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Insurance</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Claim Type</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Status</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drilldownClaims.map((claim) => (
-                      <tr key={claim.id} className="rounded-2xl bg-muted/50">
-                        <td className="rounded-l-2xl px-4 py-4 text-sm font-medium text-foreground">
-                          <Link href={`/claims/view/${claim.id}`} className="inline-flex items-center gap-2 hover:text-primary">
-                            {claim.claim_id}
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-muted-foreground">{[claim.first_name, claim.last_name].filter(Boolean).join(" ") || "-"}</td>
-                        <td className="px-4 py-4 text-sm text-muted-foreground">{claim.insurance_provider || "-"}</td>
-                        <td className="px-4 py-4 text-sm text-muted-foreground">{claim.appeal_type || "-"}</td>
-                        <td className="px-4 py-4 text-sm">
-                          <Badge variant="outline" className="border-border bg-card">
-                            {statusLabelMap[claim.status || ""] || claim.status || "Unknown"}
-                          </Badge>
-                        </td>
-                        <td className="rounded-r-2xl px-4 py-4 text-sm text-foreground">{formatDisplayDate(claim.created_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ComplianceTrendChart
+                data={
+                  data?.trend ||
+                  []
+                }
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Vendor Performance */}
+
+        <Card className="app-surface">
+          <CardHeader>
+            <CardTitle>
+              Vendor Performance
+            </CardTitle>
+
+            <CardDescription>
+              Current compliance rate
+              by vendor
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : (
+              <VendorPerformanceChart
+                data={
+                  data?.vendorPerformance ||
+                  []
+                }
+                onVendorClick={
+                  openVendor
+                }
+              />
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* -------------------------------------------------------------- */}
+      {/* Metric Results                                                 */}
+      {/* -------------------------------------------------------------- */}
+
+      <Card className="app-surface">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>
+                Metric Results
+              </CardTitle>
+
+              <CardDescription>
+                Individual KPI and SLA
+                results matching the
+                selected filters
+              </CardDescription>
+            </div>
+
+            {!isLoading && (
+              <div className="whitespace-nowrap text-sm text-muted-foreground">
+                {data?.metrics
+                  .length ??
+                  0}{" "}
+                results
+              </div>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {isLoading ? (
+            <MetricTableSkeleton />
+          ) : (
+            <MetricResultsTable
+              metrics={
+                data?.metrics ||
+                []
+              }
+              onVendorClick={
+                openVendor
+              }
+            />
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-function MetricCard({
+/* -------------------------------------------------------------------------- */
+/* Filter Select                                                              */
+/* -------------------------------------------------------------------------- */
+
+function FilterSelect({
+  label,
+  value,
+  onValueChange,
+  options,
+}: {
+  label: string
+  value: string
+
+  onValueChange: (
+    value: string
+  ) => void
+
+  options:
+    FilterOption[]
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+
+      <Select
+        value={
+          value
+        }
+        onValueChange={
+          onValueChange
+        }
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+
+        <SelectContent>
+          {options.map(
+            (option) => (
+              <SelectItem
+                key={
+                  option.value
+                }
+                value={
+                  option.value
+                }
+              >
+                {
+                  option.label
+                }
+              </SelectItem>
+            )
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Summary Card                                                               */
+/* -------------------------------------------------------------------------- */
+
+function SummaryCard({
   title,
   value,
-  detail,
-  icon,
-  accent,
+  description,
+  icon: Icon,
+  loading,
+  active = false,
+  onClick,
 }: {
   title: string
-  value: string
-  detail: string
-  icon: ReactNode
-  accent: "teal" | "green" | "red" | "orange"
+
+  value:
+    | string
+    | number
+
+  description: string
+
+  icon:
+    IconComponent
+
+  loading: boolean
+
+  active?: boolean
+
+  onClick?:
+    () => void
 }) {
-  const accentClasses = {
-    teal: "border-secondary-light/20 bg-card text-secondary-light",
-    green: "border-primary/20 bg-card text-primary",
-    red: "border-destructive/20 bg-card text-destructive",
-    orange: "border-warning/20 bg-card text-warning",
+  const content = (
+    <>
+      <div className="flex items-start justify-between">
+        <p className="text-sm text-muted-foreground">
+          {title}
+        </p>
+
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+
+      {loading ? (
+        <Skeleton className="mt-3 h-8 w-20" />
+      ) : (
+        <p className="mt-2 text-2xl font-bold">
+          {value}
+        </p>
+      )}
+
+      <p className="mt-1 text-xs text-muted-foreground">
+        {description}
+      </p>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={
+          onClick
+        }
+        className={`rounded-xl border bg-card p-5 text-left shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          active
+            ? "ring-2 ring-primary/30"
+            : ""
+        }`}
+      >
+        {content}
+      </button>
+    )
   }
 
   return (
     <Card className="app-surface">
-      <CardContent className="flex items-start justify-between p-6">
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="text-3xl font-semibold tracking-tight text-foreground">{value}</p>
-          <p className="text-sm text-muted-foreground">{detail}</p>
-        </div>
-        <div className={cn("rounded-lg border p-3", accentClasses[accent])}>{icon}</div>
+      <CardContent className="p-5">
+        {content}
       </CardContent>
     </Card>
   )
 }
 
-function EmptyState({ message, compact = false }: { message: string; compact?: boolean }) {
+/* -------------------------------------------------------------------------- */
+/* Compliance Trend Chart                                                     */
+/* -------------------------------------------------------------------------- */
+
+function ComplianceTrendChart({
+  data,
+}: {
+  data:
+    AnalyticsTrendPoint[]
+}) {
+  if (
+    data.length === 0
+  ) {
+    return (
+      <EmptyChart
+        message="No trend data available for this period."
+      />
+    )
+  }
+
   return (
-    <div className={cn("flex h-full items-center justify-center rounded-2xl border border-dashed border-border bg-muted text-center text-sm text-muted-foreground", compact ? "min-h-[120px] px-4 py-8" : "min-h-[280px] px-6 py-10")}>
-      {message}
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+      >
+        <LineChart
+          data={
+            data
+          }
+          margin={{
+            top: 10,
+            right: 10,
+            left: -10,
+            bottom: 0,
+          }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={
+              false
+            }
+            className="stroke-muted"
+          />
+
+          <XAxis
+            dataKey="period"
+            tickLine={
+              false
+            }
+            axisLine={
+              false
+            }
+            fontSize={
+              12
+            }
+          />
+
+          <YAxis
+            domain={[
+              0,
+              100,
+            ]}
+            tickLine={
+              false
+            }
+            axisLine={
+              false
+            }
+            fontSize={
+              12
+            }
+            tickFormatter={(
+              value
+            ) =>
+              `${value}%`
+            }
+          />
+
+          <Tooltip
+            cursor={
+              false
+            }
+            isAnimationActive={
+              false
+            }
+            content={({
+              active,
+              payload,
+              label,
+            }) => {
+              if (
+                !active ||
+                !payload?.length
+              ) {
+                return null
+              }
+
+              const value =
+                payload[0]
+                  .value
+
+              return (
+                <div className="rounded-lg border bg-background p-3 shadow-lg">
+                  <p className="font-medium">
+                    {label}
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    Compliance:{" "}
+                    <span className="font-semibold">
+                      {typeof value ===
+                      "number"
+                        ? `${value.toFixed(
+                            1
+                          )}%`
+                        : "—"}
+                    </span>
+                  </p>
+                </div>
+              )
+            }}
+          />
+
+          <Line
+            type="monotone"
+            dataKey="complianceRate"
+            stroke="hsl(var(--primary))"
+            strokeWidth={
+              2
+            }
+            dot={{
+              r: 3,
+              fill:
+                "hsl(var(--primary))",
+            }}
+            activeDot={{
+              r: 5,
+            }}
+            connectNulls
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }
 
-function LabelText({ children }: { children: ReactNode }) {
-  return <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary-foreground/60">{children}</p>
+/* -------------------------------------------------------------------------- */
+/* Vendor Performance Chart                                                   */
+/* -------------------------------------------------------------------------- */
+
+function VendorPerformanceChart({
+  data,
+  onVendorClick,
+}: {
+  data:
+    VendorPerformance[]
+
+  onVendorClick: (
+    vendorId: string
+  ) => void
+}) {
+  const chartData =
+    useMemo(
+      () =>
+        [...data]
+          .filter(
+            (vendor) =>
+              vendor.complianceRate !==
+              null
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              (a.complianceRate ??
+                0) -
+              (b.complianceRate ??
+                0)
+          )
+          .slice(
+            0,
+            10
+          ),
+      [
+        data,
+      ]
+    )
+
+  if (
+    chartData.length ===
+    0
+  ) {
+    return (
+      <EmptyChart
+        message="No vendor performance data is available."
+      />
+    )
+  }
+
+  return (
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+      >
+        <BarChart
+          data={
+            chartData
+          }
+          layout="vertical"
+          margin={{
+            top: 5,
+            right: 20,
+            left: 20,
+            bottom: 0,
+          }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            horizontal={
+              false
+            }
+            className="stroke-muted"
+          />
+
+          <XAxis
+            type="number"
+            domain={[
+              0,
+              100,
+            ]}
+            tickLine={
+              false
+            }
+            axisLine={
+              false
+            }
+            fontSize={
+              12
+            }
+            tickFormatter={(
+              value
+            ) =>
+              `${value}%`
+            }
+          />
+
+          <YAxis
+            type="category"
+            dataKey="vendorName"
+            tickLine={
+              false
+            }
+            axisLine={
+              false
+            }
+            width={
+              100
+            }
+            fontSize={
+              11
+            }
+          />
+
+          <Tooltip
+            cursor={{
+              fill:
+                "hsl(var(--muted) / 0.3)",
+            }}
+            isAnimationActive={
+              false
+            }
+            content={({
+              active,
+              payload,
+            }) => {
+              if (
+                !active ||
+                !payload?.length
+              ) {
+                return null
+              }
+
+              const vendor =
+                payload[0]
+                  .payload as VendorPerformance
+
+              return (
+                <div className="rounded-lg border bg-background p-3 shadow-lg">
+                  <p className="font-semibold">
+                    {
+                      vendor.vendorName
+                    }
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    Compliance:{" "}
+                    <span className="font-medium">
+                      {vendor.complianceRate !==
+                      null
+                        ? `${vendor.complianceRate.toFixed(
+                            1
+                          )}%`
+                        : "—"}
+                    </span>
+                  </p>
+
+                  <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                    <p>
+                      {
+                        vendor.met
+                      }{" "}
+                      met
+                    </p>
+
+                    <p>
+                      {
+                        vendor.missed
+                      }{" "}
+                      missed
+                    </p>
+
+                    <p>
+                      {
+                        vendor.awaiting
+                      }{" "}
+                      awaiting
+                    </p>
+                  </div>
+
+                  <p className="mt-2 text-xs font-medium text-primary">
+                    Click to view
+                    vendor →
+                  </p>
+                </div>
+              )
+            }}
+          />
+
+          <Bar
+            dataKey="complianceRate"
+            radius={[
+              0,
+              6,
+              6,
+              0,
+            ]}
+            maxBarSize={
+              28
+            }
+            className="cursor-pointer"
+            onClick={(
+              _,
+              index
+            ) => {
+              const vendor =
+                chartData[
+                  index
+                ]
+
+              if (
+                vendor
+              ) {
+                onVendorClick(
+                  vendor.vendorId
+                )
+              }
+            }}
+          >
+            {chartData.map(
+              (vendor) => (
+                <Cell
+                  key={
+                    vendor.vendorId
+                  }
+                  fill="hsl(var(--primary))"
+                  className="cursor-pointer"
+                />
+              )
+            )}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Metric Results Table                                                       */
+/* -------------------------------------------------------------------------- */
+
+function MetricResultsTable({
+  metrics,
+  onVendorClick,
+}: {
+  metrics:
+    AnalyticsMetric[]
+
+  onVendorClick: (
+    vendorId: string
+  ) => void
+}) {
+  if (
+    metrics.length ===
+    0
+  ) {
+    return (
+      <div className="rounded-lg border border-dashed p-8 text-center">
+        <Activity className="mx-auto h-8 w-8 text-muted-foreground" />
+
+        <p className="mt-3 font-medium">
+          No metric results
+        </p>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          No KPI or SLA results
+          match the selected filters.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr className="border-b">
+              <TableHeader>
+                Vendor
+              </TableHeader>
+
+              <TableHeader>
+                Metric
+              </TableHeader>
+
+              <TableHeader>
+                Type
+              </TableHeader>
+
+              <TableHeader>
+                Target
+              </TableHeader>
+
+              <TableHeader>
+                Actual
+              </TableHeader>
+
+              <TableHeader>
+                Status
+              </TableHeader>
+
+              <TableHeader>
+                Period
+              </TableHeader>
+
+              <TableHeader>
+                <span className="sr-only">
+                  View
+                </span>
+              </TableHeader>
+            </tr>
+          </thead>
+
+          <tbody>
+            {metrics.map(
+              (metric) => (
+                <tr
+                  key={
+                    metric.id
+                  }
+                  className="border-b last:border-b-0 hover:bg-muted/30"
+                >
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onVendorClick(
+                          metric.vendorId
+                        )
+                      }
+                      className="font-medium hover:underline"
+                    >
+                      {
+                        metric.vendorName
+                      }
+                    </button>
+
+                    {metric.lineOfBusinessName && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {
+                          metric.lineOfBusinessName
+                        }
+                      </p>
+                    )}
+                  </td>
+
+                  <td className="px-4 py-3 font-medium">
+                    {
+                      metric.metricName
+                    }
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <MetricTypeBadge
+                      type={
+                        metric.metricType
+                      }
+                    />
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    {metric.target ||
+                      "—"}
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {metric.actual ||
+                      "—"}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      status={
+                        metric.status
+                      }
+                    />
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    {metric.period ||
+                      "—"}
+                  </td>
+
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        onVendorClick(
+                          metric.vendorId
+                        )
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+
+                      <span className="sr-only">
+                        View vendor
+                      </span>
+                    </Button>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Table Header                                                               */
+/* -------------------------------------------------------------------------- */
+
+function TableHeader({
+  children,
+}: {
+  children:
+    React.ReactNode
+}) {
+  return (
+    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+      {children}
+    </th>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Status Badge                                                               */
+/* -------------------------------------------------------------------------- */
+
+function StatusBadge({
+  status,
+}: {
+  status:
+    MetricStatus
+}) {
+  const config = {
+    met: {
+      label:
+        "Met",
+
+      icon:
+        CheckCircle2,
+
+      className:
+        "bg-primary/10 text-primary",
+    },
+
+    missed: {
+      label:
+        "Missed",
+
+      icon:
+        XCircle,
+
+      className:
+        "bg-destructive/10 text-destructive",
+    },
+
+    awaiting: {
+      label:
+        "Awaiting",
+
+      icon:
+        CircleDashed,
+
+      className:
+        "bg-muted text-muted-foreground",
+    },
+  }[status]
+
+  const Icon =
+    config.icon
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${config.className}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+
+      {config.label}
+    </span>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Metric Type Badge                                                          */
+/* -------------------------------------------------------------------------- */
+
+function MetricTypeBadge({
+  type,
+}: {
+  type:
+    MetricType
+}) {
+  return (
+    <span className="inline-flex rounded-md border bg-background px-2 py-0.5 text-xs font-medium">
+      {type}
+    </span>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Empty Chart                                                                */
+/* -------------------------------------------------------------------------- */
+
+function EmptyChart({
+  message,
+}: {
+  message: string
+}) {
+  return (
+    <div className="flex h-[300px] items-center justify-center">
+      <div className="text-center">
+        <BarChart3 className="mx-auto h-7 w-7 text-muted-foreground" />
+
+        <p className="mt-2 text-sm text-muted-foreground">
+          {message}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Table Skeleton                                                             */
+/* -------------------------------------------------------------------------- */
+
+function MetricTableSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({
+        length: 5,
+      }).map(
+        (
+          _,
+          index
+        ) => (
+          <Skeleton
+            key={
+              index
+            }
+            className="h-12 w-full"
+          />
+        )
+      )}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* URL Helpers                                                                */
+/* -------------------------------------------------------------------------- */
+
+function getValidStatus(
+  value:
+    string | null
+): StatusFilter {
+  if (
+    value === "met" ||
+    value === "missed" ||
+    value === "awaiting"
+  ) {
+    return value
+  }
+
+  return "all"
+}
+
+function getValidMetricType(
+  value:
+    string | null
+): TypeFilter {
+  if (
+    value === "KPI" ||
+    value === "SLA"
+  ) {
+    return value
+  }
+
+  return "all"
+}
+
+function getValidDateRange(
+  value:
+    string | null
+): DateRange {
+  if (
+    value === "3" ||
+    value === "6" ||
+    value === "12"
+  ) {
+    return value
+  }
+
+  return "6"
+}
+
+function formatStatus(
+  status:
+    StatusFilter
+) {
+  switch (status) {
+    case "met":
+      return "Met Metrics"
+
+    case "missed":
+      return "Missed Metrics"
+
+    case "awaiting":
+      return "Awaiting Results"
+
+    default:
+      return "All Metrics"
+  }
 }
