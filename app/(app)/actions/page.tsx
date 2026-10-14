@@ -7,6 +7,7 @@ import {
 } from "react"
 
 import Link from "next/link"
+
 import {
   useRouter,
   useSearchParams,
@@ -15,18 +16,19 @@ import {
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   CheckCircle2,
   Circle,
   Clock3,
   Eye,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Search,
   UserRound,
 } from "lucide-react"
 
 import { useActions } from "@/hooks/use-actions"
-
 import { cn } from "@/lib/utils"
 
 import {
@@ -35,6 +37,7 @@ import {
 } from "@/components/ui/alert"
 
 import { Button } from "@/components/ui/button"
+
 import {
   Card,
   CardContent,
@@ -44,7 +47,6 @@ import {
 } from "@/components/ui/card"
 
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
 import {
   Select,
@@ -60,6 +62,10 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
+
 type ActionStatus =
   | "open"
   | "in_progress"
@@ -70,6 +76,17 @@ type VendorOption = {
   id: string
   name: string
 }
+
+type DueMeta = {
+  label: string
+  className: string
+  isOverdue: boolean
+  isDueToday: boolean
+}
+
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
 
 const STATUS_LABELS: Record<
   ActionStatus,
@@ -87,79 +104,318 @@ const STATUS_TONES: Record<
 > = {
   open:
     "bg-secondary/10 text-secondary",
+
   in_progress:
     "bg-warning/10 text-warning",
+
   completed:
     "bg-primary/10 text-primary",
+
   cancelled:
     "bg-muted text-muted-foreground",
 }
 
+/* -------------------------------------------------------------------------- */
+/* Date Helpers                                                               */
+/* -------------------------------------------------------------------------- */
+
+function parseDate(
+  value: string | null
+) {
+  if (!value) {
+    return null
+  }
+
+  const normalized =
+    value.slice(0, 10)
+
+  const [
+    year,
+    month,
+    day,
+  ] = normalized
+    .split("-")
+    .map(Number)
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return null
+  }
+
+  return new Date(
+    year,
+    month - 1,
+    day
+  )
+}
+
+function formatDate(
+  value: string | null
+) {
+  const date =
+    parseDate(value)
+
+  if (!date) {
+    return "No due date"
+  }
+
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }
+  )
+}
+
+function getDueMeta(
+  value: string | null,
+  actionStatus: ActionStatus
+): DueMeta {
+  if (!value) {
+    return {
+      label:
+        "No due date",
+
+      className:
+        "text-muted-foreground",
+
+      isOverdue:
+        false,
+
+      isDueToday:
+        false,
+    }
+  }
+
+  const date =
+    parseDate(value)
+
+  if (!date) {
+    return {
+      label:
+        "No due date",
+
+      className:
+        "text-muted-foreground",
+
+      isOverdue:
+        false,
+
+      isDueToday:
+        false,
+    }
+  }
+
+  /*
+   * Completed and cancelled items should
+   * show their date normally instead of
+   * appearing overdue.
+   */
+
+  if (
+    actionStatus ===
+      "completed" ||
+    actionStatus ===
+      "cancelled"
+  ) {
+    return {
+      label:
+        formatDate(value),
+
+      className:
+        "text-muted-foreground",
+
+      isOverdue:
+        false,
+
+      isDueToday:
+        false,
+    }
+  }
+
+  const today =
+    new Date()
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  )
+
+  const diff =
+    Math.round(
+      (
+        date.getTime() -
+        today.getTime()
+      ) /
+        (
+          1000 *
+          60 *
+          60 *
+          24
+        )
+    )
+
+  if (diff < 0) {
+    const overdue =
+      Math.abs(diff)
+
+    return {
+      label:
+        `${overdue} day${
+          overdue === 1
+            ? ""
+            : "s"
+        } overdue`,
+
+      className:
+        "text-destructive",
+
+      isOverdue:
+        true,
+
+      isDueToday:
+        false,
+    }
+  }
+
+  if (diff === 0) {
+    return {
+      label:
+        "Due today",
+
+      className:
+        "text-warning",
+
+      isOverdue:
+        false,
+
+      isDueToday:
+        true,
+    }
+  }
+
+  if (diff <= 7) {
+    return {
+      label:
+        `Due in ${diff} day${
+          diff === 1
+            ? ""
+            : "s"
+        }`,
+
+      className:
+        "text-warning",
+
+      isOverdue:
+        false,
+
+      isDueToday:
+        false,
+    }
+  }
+
+  return {
+    label:
+      formatDate(value),
+
+    className:
+      "text-muted-foreground",
+
+    isOverdue:
+      false,
+
+    isDueToday:
+      false,
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
+
 export default function ActionsPage() {
-  const router = useRouter()
+  const router =
+    useRouter()
 
   const searchParams =
     useSearchParams()
 
-  // --------------------------------------------------
-  // URL filters
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* URL State                                                                */
+  /* ------------------------------------------------------------------------ */
 
   const status =
-    searchParams.get("status") ||
-    "open"
+    searchParams.get(
+      "status"
+    ) || "active"
 
   const due =
-    searchParams.get("due") ||
-    "all"
+    searchParams.get(
+      "due"
+    ) || "all"
 
   const vendorId =
-    searchParams.get("vendorId") ||
-    "all"
+    searchParams.get(
+      "vendorId"
+    ) || "all"
 
   const urlSearch =
-    searchParams.get("search") ||
-    ""
+    searchParams.get(
+      "search"
+    ) || ""
 
-  // --------------------------------------------------
-  // Local state
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Local State                                                              */
+  /* ------------------------------------------------------------------------ */
 
   const [
     search,
     setSearch,
   ] =
-    useState(urlSearch)
+    useState(
+      urlSearch
+    )
 
   const [
     vendors,
     setVendors,
   ] =
-    useState<VendorOption[]>([])
+    useState<
+      VendorOption[]
+    >([])
 
   const [
     updatingActionId,
     setUpdatingActionId,
   ] =
-    useState<string | null>(
-      null
-    )
+    useState<
+      string | null
+    >(null)
 
   const [
     localError,
     setLocalError,
   ] =
-    useState<string | null>(
-      null
-    )
+    useState<
+      string | null
+    >(null)
 
-  // --------------------------------------------------
-  // Actions
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Actions                                                                  */
+  /* ------------------------------------------------------------------------ */
 
   const {
     actions,
     count,
+    summary,
+    pagination,
     isLoading,
     error,
     refetch,
@@ -187,9 +443,9 @@ export default function ActionsPage() {
     pageSize: 100,
   })
 
-  // --------------------------------------------------
-  // Vendor options
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Load Vendor Options                                                      */
+  /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
     const loadVendors =
@@ -207,7 +463,9 @@ export default function ActionsPage() {
           const data =
             await response.json()
 
-          if (!response.ok) {
+          if (
+            !response.ok
+          ) {
             throw new Error(
               data.error ||
                 "Failed to load vendors"
@@ -246,83 +504,106 @@ export default function ActionsPage() {
     loadVendors()
   }, [])
 
+  /* ------------------------------------------------------------------------ */
+  /* Sync Search Input                                                        */
+  /* ------------------------------------------------------------------------ */
+
   useEffect(() => {
     setSearch(
       urlSearch
     )
   }, [urlSearch])
 
-  // --------------------------------------------------
-  // URL helper
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* URL Helper                                                               */
+  /* ------------------------------------------------------------------------ */
 
   const updateParams = (
     updates: Record<
-        string,
-        string | null
+      string,
+      string | null
     >
-    ) => {
+  ) => {
     const params =
-        new URLSearchParams(
+      new URLSearchParams(
         searchParams.toString()
-        )
+      )
 
     Object.entries(
-        updates
+      updates
     ).forEach(
-        ([key, value]) => {
-        // Status needs special handling because
-        // no status param means "open" by default.
-        if (
-            key === "status"
-        ) {
-            if (
-            value === "open" ||
-            !value
-            ) {
-            params.delete(
-                "status"
-            )
-            } else {
-            params.set(
-                "status",
-                value
-            )
-            }
+      ([key, value]) => {
+        /*
+         * "open" is the default status,
+         * so we don't need it in the URL.
+         */
 
-            return
+        if (
+          key ===
+          "status"
+        ) {
+          if (
+            value ===
+              "active" ||
+            !value
+          ) {
+            params.delete(
+              "status"
+            )
+          } else {
+            params.set(
+              "status",
+              value
+            )
+          }
+
+          return
         }
 
-        // Other filters can remove "all" from the URL.
         if (
-            !value ||
-            value === "all"
+          !value ||
+          value ===
+            "all"
         ) {
-            params.delete(
+          params.delete(
             key
-            )
+          )
         } else {
-            params.set(
+          params.set(
             key,
             value
-            )
+          )
         }
-        }
+      }
     )
 
     const query =
-        params.toString()
+      params.toString()
 
     router.push(
-        query
+      query
         ? `/actions?${query}`
         : "/actions"
     )
-    }
+  }
 
-  // --------------------------------------------------
-  // Search
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Filters                                                                  */
+  /* ------------------------------------------------------------------------ */
+
+  const hasActiveFilters =
+    status !== "active" ||
+    due !== "all" ||
+    vendorId !== "all" ||
+    Boolean(urlSearch)
+
+  const clearFilters =
+    () => {
+      setSearch("")
+      router.push(
+        "/actions"
+      )
+    }
 
   const handleSearch =
     () => {
@@ -345,9 +626,9 @@ export default function ActionsPage() {
       }
     }
 
-  // --------------------------------------------------
-  // Quick status update
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Status Update                                                            */
+  /* ------------------------------------------------------------------------ */
 
   const updateActionStatus =
     async (
@@ -361,7 +642,9 @@ export default function ActionsPage() {
           actionId
         )
 
-        setLocalError(null)
+        setLocalError(
+          null
+        )
 
         const response =
           await fetch(
@@ -376,17 +659,21 @@ export default function ActionsPage() {
               },
 
               body:
-                JSON.stringify({
-                  status:
-                    nextStatus,
-                }),
+                JSON.stringify(
+                  {
+                    status:
+                      nextStatus,
+                  }
+                ),
             }
           )
 
         const data =
           await response.json()
 
-        if (!response.ok) {
+        if (
+          !response.ok
+        ) {
           throw new Error(
             data.error ||
               "Failed to update action item"
@@ -410,428 +697,263 @@ export default function ActionsPage() {
       }
     }
 
-  // --------------------------------------------------
-  // Dates
-  // --------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Summary                                                                  */
+  /* ------------------------------------------------------------------------ */
 
-  const parseDate =
-    (
-      value:
-        | string
-        | null
-    ) => {
-      if (!value) {
-        return null
-      }
-
-      const normalized =
-        value.slice(
-          0,
-          10
-        )
-
-      const [
-        year,
-        month,
-        day,
-      ] =
-        normalized
-          .split("-")
-          .map(Number)
-
-      if (
-        !year ||
-        !month ||
-        !day
-      ) {
-        return null
-      }
-
-      return new Date(
-        year,
-        month - 1,
-        day
-      )
-    }
-
-  const formatDate =
-    (
-      value:
-        | string
-        | null
-    ) => {
-      const date =
-        parseDate(
-          value
-        )
-
-      if (!date) {
-        return "No due date"
-      }
-
-      return date.toLocaleDateString(
-        "en-US",
-        {
-          month:
-            "short",
-          day:
-            "numeric",
-          year:
-            "numeric",
-        }
-      )
-    }
-
-  const getDueMeta =
-    (
-      value:
-        | string
-        | null,
-      actionStatus:
-        ActionStatus
-    ) => {
-      if (!value) {
-        return {
-          label:
-            "No due date",
-
-          className:
-            "text-muted-foreground",
-        }
-      }
-
-      const date =
-        parseDate(
-          value
-        )
-
-      if (!date) {
-        return {
-          label:
-            "No due date",
-
-          className:
-            "text-muted-foreground",
-        }
-      }
-
-      const today =
-        new Date()
-
-      today.setHours(
-        0,
-        0,
-        0,
-        0
-      )
-
-      const diff =
-        Math.ceil(
-          (
-            date.getTime() -
-            today.getTime()
-          ) /
-            (
-              1000 *
-              60 *
-              60 *
-              24
-            )
-        )
-
-      if (
-        actionStatus ===
-          "completed" ||
-        actionStatus ===
-          "cancelled"
-      ) {
-        return {
-          label:
-            formatDate(
-              value
-            ),
-
-          className:
-            "text-muted-foreground",
-        }
-      }
-
-      if (diff < 0) {
-        const overdue =
-          Math.abs(diff)
-
-        return {
-          label:
-            `${overdue} day${
-              overdue === 1
-                ? ""
-                : "s"
-            } overdue`,
-
-          className:
-            "text-destructive",
-        }
-      }
-
-      if (diff === 0) {
-        return {
-          label:
-            "Due today",
-
-          className:
-            "text-warning",
-        }
-      }
-
-      if (
-        diff <= 7
-      ) {
-        return {
-          label:
-            `Due in ${diff} day${
-              diff === 1
-                ? ""
-                : "s"
-            }`,
-
-          className:
-            "text-warning",
-        }
-      }
-
-      return {
-        label:
-          formatDate(
-            value
-          ),
-
-        className:
-          "text-muted-foreground",
-      }
-    }
-
-  // --------------------------------------------------
-  // Summary counts for currently loaded result
-  // --------------------------------------------------
-
-  const summary =
-    useMemo(() => {
-      let overdue = 0
-      let dueToday = 0
-      let noDueDate = 0
-
-      const today =
-        new Date()
-
-      today.setHours(
-        0,
-        0,
-        0,
-        0
-      )
-
-      for (
-        const action of
-        actions
-      ) {
-        if (
-          action.status !==
-            "open" &&
-          action.status !==
-            "in_progress"
-        ) {
-          continue
-        }
-
-        if (
-          !action.dueDate
-        ) {
-          noDueDate += 1
-          continue
-        }
-
-        const date =
-          parseDate(
-            action.dueDate
-          )
-
-        if (!date) {
-          continue
-        }
-
-        if (
-          date.getTime() <
-          today.getTime()
-        ) {
-          overdue += 1
-        } else if (
-          date.getTime() ===
-          today.getTime()
-        ) {
-          dueToday += 1
-        }
-      }
-
-      return {
-        overdue,
-        dueToday,
-        noDueDate,
-      }
-    }, [actions])
+  /*
+   * IMPORTANT:
+   *
+   * These counts are based on the currently
+   * loaded result set.
+   *
+   * Eventually I recommend returning summary
+   * counts directly from /api/actions so these
+   * become organization-wide counts independent
+   * of the selected filters.
+   */
 
   const activeError =
     localError ||
     error
 
+  /* ------------------------------------------------------------------------ */
+  /* Render                                                                   */
+  /* ------------------------------------------------------------------------ */
+
   return (
-    <div className="app-page space-y-6">
+    <div className="app-page space-y-5">
 
-      {/* Header */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Page Controls                                                      */}
+      {/* ------------------------------------------------------------------ */}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  
 
-        <div>
-          <h1 className="text-3xl font-bold">
-            Actions
-          </h1>
-
-          <p className="text-muted-foreground">
-            Manage follow-up work across all vendors and meetings.
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={
-            refetch
-          }
-          disabled={
-            isLoading
-          }
-        >
-          <RefreshCw
-            className={cn(
-              "mr-2 h-4 w-4",
-              isLoading &&
-                "animate-spin"
-            )}
-          />
-
-          Refresh
-        </Button>
-      </div>
-
-      {/* Error */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Error                                                              */}
+      {/* ------------------------------------------------------------------ */}
 
       {activeError ? (
         <Alert variant="destructive">
+
           <AlertCircle className="h-4 w-4" />
 
           <AlertDescription>
-            {
-              activeError
-            }
+            {activeError}
           </AlertDescription>
+
         </Alert>
       ) : null}
 
-      {/* Summary */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Summary Cards                                                      */}
+      {/* ------------------------------------------------------------------ */}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Results
-            </CardTitle>
+        {/* Results */}
 
-            <Circle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
+        <button
+          type="button"
+          className="text-left"
+          onClick={() =>
+            updateParams({
+              status:
+                "active",
+              due: null,
+            })
+          }
+        >
+          <Card
+            className={cn(
+              "app-surface h-full transition-all",
+              "hover:border-primary/30 hover:bg-muted/20 hover:shadow-sm",
+              status ===
+                "active" &&
+                due ===
+                  "all" &&
+                "ring-2 ring-primary/10"
+            )}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
 
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {count}
-            </div>
+              <CardTitle className="text-sm font-medium">
+                Open Actions
+              </CardTitle>
 
-            <p className="mt-1 text-xs text-muted-foreground">
-              Matching current filters
-            </p>
-          </CardContent>
-        </Card>
+              <Circle className="h-4 w-4 text-muted-foreground" />
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Overdue
-            </CardTitle>
+            </CardHeader>
 
-            <AlertCircle className="h-4 w-4 text-destructive" />
-          </CardHeader>
+            <CardContent>
 
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">
-              {
-                summary.overdue
-              }
-            </div>
+              <div className="text-2xl font-bold">
+                {summary.active}
+              </div>
 
-            <p className="mt-1 text-xs text-muted-foreground">
-              Past due and still open
-            </p>
-          </CardContent>
-        </Card>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Open and in-progress work
+              </p>
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Due Today
-            </CardTitle>
+            </CardContent>
+          </Card>
+        </button>
 
-            <Clock3 className="h-4 w-4 text-warning" />
-          </CardHeader>
+        {/* Overdue */}
 
-          <CardContent>
-            <div className="text-2xl font-bold text-warning">
-              {
-                summary.dueToday
-              }
-            </div>
+        <button
+          type="button"
+          className="text-left"
+          onClick={() =>
+            updateParams({
+              due:
+                due ===
+                "overdue"
+                  ? null
+                  : "overdue",
+            })
+          }
+        >
+          <Card
+            className={cn(
+              "app-surface h-full transition-all",
+              "hover:border-destructive/30 hover:bg-destructive/[0.02] hover:shadow-sm",
+              due ===
+                "overdue" &&
+                "ring-2 ring-destructive/20"
+            )}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
 
-            <p className="mt-1 text-xs text-muted-foreground">
-              Needs attention today
-            </p>
-          </CardContent>
-        </Card>
+              <CardTitle className="text-sm font-medium">
+                Overdue
+              </CardTitle>
 
-        <Card className="app-surface">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              No Due Date
-            </CardTitle>
+              <AlertCircle className="h-4 w-4 text-destructive" />
 
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
+            </CardHeader>
 
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {
-                summary.noDueDate
-              }
-            </div>
+            <CardContent>
 
-            <p className="mt-1 text-xs text-muted-foreground">
-              Open work without a deadline
-            </p>
-          </CardContent>
-        </Card>
+              <div className="text-2xl font-bold text-destructive">
+                {summary.overdue}
+              </div>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Past due and still open
+              </p>
+
+            </CardContent>
+          </Card>
+        </button>
+
+        {/* Due Today */}
+
+        <button
+          type="button"
+          className="text-left"
+          onClick={() =>
+            updateParams({
+              due:
+                due ===
+                "today"
+                  ? null
+                  : "today",
+            })
+          }
+        >
+          <Card
+            className={cn(
+              "app-surface h-full transition-all",
+              "hover:border-warning/30 hover:bg-warning/[0.02] hover:shadow-sm",
+              due ===
+                "today" &&
+                "ring-2 ring-warning/20"
+            )}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+
+              <CardTitle className="text-sm font-medium">
+                Due Today
+              </CardTitle>
+
+              <Clock3 className="h-4 w-4 text-warning" />
+
+            </CardHeader>
+
+            <CardContent>
+
+              <div className="text-2xl font-bold text-warning">
+                {summary.dueToday}
+              </div>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Needs attention today
+              </p>
+
+            </CardContent>
+          </Card>
+        </button>
+
+        {/* No Due Date */}
+
+        <button
+          type="button"
+          className="text-left"
+          onClick={() =>
+            updateParams({
+              due:
+                due ===
+                "no_due_date"
+                  ? null
+                  : "no_due_date",
+            })
+          }
+        >
+          <Card
+            className={cn(
+              "app-surface h-full transition-all",
+              "hover:border-primary/30 hover:bg-muted/20 hover:shadow-sm",
+              due ===
+                "no_due_date" &&
+                "ring-2 ring-primary/10"
+            )}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+
+              <CardTitle className="text-sm font-medium">
+                No Due Date
+              </CardTitle>
+
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+
+            </CardHeader>
+
+            <CardContent>
+
+              <div className="text-2xl font-bold">
+                {summary.noDueDate}
+              </div>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Open work without a deadline
+              </p>
+
+            </CardContent>
+          </Card>
+        </button>
+
       </div>
 
-      {/* Main Work Queue */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Work Queue                                                         */}
+      {/* ------------------------------------------------------------------ */}
 
       <Card className="app-surface">
 
-        <CardHeader>
+        <CardHeader className="pb-4">
+
           <CardTitle>
             Action Work Queue
           </CardTitle>
@@ -839,11 +961,14 @@ export default function ActionsPage() {
           <CardDescription>
             Review, prioritize, and complete action items across vendor relationships.
           </CardDescription>
+
         </CardHeader>
 
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-4">
 
-          {/* Status tabs */}
+          {/* -------------------------------------------------------------- */}
+          {/* Status Tabs                                                    */}
+          {/* -------------------------------------------------------------- */}
 
           <Tabs
             value={
@@ -858,7 +983,12 @@ export default function ActionsPage() {
               })
             }
           >
-            <TabsList className="flex h-auto flex-wrap">
+            <TabsList className="flex h-auto w-fit max-w-full flex-wrap">
+
+              <TabsTrigger value="all">
+                All
+              </TabsTrigger>
+
               <TabsTrigger value="open">
                 Open
               </TabsTrigger>
@@ -875,174 +1005,251 @@ export default function ActionsPage() {
                 Cancelled
               </TabsTrigger>
 
-              <TabsTrigger value="all">
-                All
-              </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          {/* Filters */}
+          {/* -------------------------------------------------------------- */}
+          {/* Filter Toolbar                                                 */}
+          {/* -------------------------------------------------------------- */}
 
-          <div className="grid gap-4 border-y border-border py-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-3 border-y border-border py-4 lg:flex-row lg:items-center">
 
             {/* Search */}
 
-            <div className="space-y-2 xl:col-span-2">
-              <Label>
-                Search
-              </Label>
+            <div className="flex min-w-0 flex-1 gap-2">
 
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <div className="relative min-w-0 flex-1">
 
-                  <Input
-                    value={
-                      search
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setSearch(
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                    onKeyDown={
-                      handleSearchKeyDown
-                    }
-                    placeholder="Search action, owner, vendor, or meeting..."
-                    className="pl-9"
-                  />
-                </div>
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
-                <Button
-                  variant="outline"
-                  onClick={
-                    handleSearch
+                <Input
+                  value={
+                    search
                   }
-                >
-                  Search
-                </Button>
+                  onChange={(
+                    event
+                  ) =>
+                    setSearch(
+                      event
+                        .target
+                        .value
+                    )
+                  }
+                  onKeyDown={
+                    handleSearchKeyDown
+                  }
+                  placeholder="Search action, owner, vendor, or meeting..."
+                  className="pl-9"
+                />
+
               </div>
+
+              <Button
+                variant="outline"
+                onClick={
+                  handleSearch
+                }
+              >
+                Search
+              </Button>
+
             </div>
 
             {/* Vendor */}
 
-            <div className="space-y-2">
-              <Label>
-                Vendor
-              </Label>
+            <Select
+              value={
+                vendorId
+              }
+              onValueChange={(
+                value
+              ) =>
+                updateParams({
+                  vendorId:
+                    value,
+                })
+              }
+            >
+              <SelectTrigger className="w-full lg:w-[210px]">
+                <SelectValue placeholder="All vendors" />
+              </SelectTrigger>
 
-              <Select
-                value={
-                  vendorId
-                }
-                onValueChange={(
-                  value
-                ) =>
-                  updateParams({
-                    vendorId:
-                      value,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All vendors" />
-                </SelectTrigger>
+              <SelectContent>
 
-                <SelectContent>
-                  <SelectItem value="all">
-                    All Vendors
-                  </SelectItem>
+                <SelectItem value="all">
+                  All Vendors
+                </SelectItem>
 
-                  {vendors.map(
-                    (
-                      vendor
-                    ) => (
-                      <SelectItem
-                        key={
-                          vendor.id
-                        }
-                        value={
-                          vendor.id
-                        }
-                      >
-                        {
-                          vendor.name
-                        }
-                      </SelectItem>
-                    )
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+                {vendors.map(
+                  (
+                    vendor
+                  ) => (
+                    <SelectItem
+                      key={
+                        vendor.id
+                      }
+                      value={
+                        vendor.id
+                      }
+                    >
+                      {
+                        vendor.name
+                      }
+                    </SelectItem>
+                  )
+                )}
+
+              </SelectContent>
+            </Select>
 
             {/* Due */}
 
-            <div className="space-y-2">
-              <Label>
-                Due
-              </Label>
+            <Select
+              value={
+                due
+              }
+              onValueChange={(
+                value
+              ) =>
+                updateParams({
+                  due:
+                    value,
+                })
+              }
+            >
+              <SelectTrigger className="w-full lg:w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
 
-              <Select
-                value={
-                  due
+              <SelectContent>
+
+                <SelectItem value="all">
+                  All Due Dates
+                </SelectItem>
+
+                <SelectItem value="overdue">
+                  Overdue
+                </SelectItem>
+
+                <SelectItem value="today">
+                  Due Today
+                </SelectItem>
+
+                <SelectItem value="upcoming">
+                  Upcoming
+                </SelectItem>
+
+                <SelectItem value="no_due_date">
+                  No Due Date
+                </SelectItem>
+
+              </SelectContent>
+            </Select>
+
+            {/* Clear */}
+
+            {hasActiveFilters ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={
+                  clearFilters
                 }
-                onValueChange={(
-                  value
-                ) =>
-                  updateParams({
-                    due:
-                      value,
-                  })
-                }
+                className="shrink-0"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <RotateCcw className="mr-2 h-4 w-4" />
 
-                <SelectContent>
-                  <SelectItem value="all">
-                    All Due Dates
-                  </SelectItem>
+                Clear
+              </Button>
+            ) : null}
 
-                  <SelectItem value="overdue">
-                    Overdue
-                  </SelectItem>
-
-                  <SelectItem value="today">
-                    Due Today
-                  </SelectItem>
-
-                  <SelectItem value="upcoming">
-                    Upcoming
-                  </SelectItem>
-
-                  <SelectItem value="no_due_date">
-                    No Due Date
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
-          {/* Results */}
+          {/* -------------------------------------------------------------- */}
+          {/* Active Filter Context                                          */}
+          {/* -------------------------------------------------------------- */}
+
+          {hasActiveFilters ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+
+              <span>
+                Showing filtered results
+              </span>
+
+              {due !==
+              "all" ? (
+                <span className="rounded-full bg-muted px-2 py-1 font-medium text-foreground">
+                  Due:{" "}
+                  {due ===
+                  "no_due_date"
+                    ? "No due date"
+                    : due ===
+                        "today"
+                      ? "Today"
+                      : due
+                          .charAt(
+                            0
+                          )
+                          .toUpperCase() +
+                        due.slice(
+                          1
+                        )}
+                </span>
+              ) : null}
+
+              {vendorId !==
+              "all" ? (
+                <span className="rounded-full bg-muted px-2 py-1 font-medium text-foreground">
+                  Vendor:{" "}
+                  {
+                    vendors.find(
+                      (
+                        vendor
+                      ) =>
+                        vendor.id ===
+                        vendorId
+                    )?.name
+                  }
+                </span>
+              ) : null}
+
+              {urlSearch ? (
+                <span className="rounded-full bg-muted px-2 py-1 font-medium text-foreground">
+                  Search:{" "}
+                  {urlSearch}
+                </span>
+              ) : null}
+
+            </div>
+          ) : null}
+
+          {/* -------------------------------------------------------------- */}
+          {/* Loading                                                        */}
+          {/* -------------------------------------------------------------- */}
 
           {isLoading ? (
             <div className="flex min-h-56 items-center justify-center">
+
               <div className="text-center">
+
                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
 
                 <p className="mt-3 text-sm text-muted-foreground">
                   Loading action items...
                 </p>
+
               </div>
+
             </div>
           ) : actions.length ===
             0 ? (
+
+            /* ------------------------------------------------------------ */
+            /* Empty State                                                  */
+            /* ------------------------------------------------------------ */
+
             <div className="rounded-xl border border-dashed border-border px-6 py-12 text-center">
+
               <CheckCircle2 className="mx-auto h-10 w-10 text-muted-foreground" />
 
               <h3 className="mt-4 font-semibold">
@@ -1052,8 +1259,29 @@ export default function ActionsPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 There are no action items matching the current filters.
               </p>
+
+              {hasActiveFilters ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={
+                    clearFilters
+                  }
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+
+                  Clear Filters
+                </Button>
+              ) : null}
+
             </div>
           ) : (
+
+            /* ------------------------------------------------------------ */
+            /* Action Rows                                                  */
+            /* ------------------------------------------------------------ */
+
             <div className="space-y-3">
 
               {actions.map(
@@ -1070,38 +1298,81 @@ export default function ActionsPage() {
                     updatingActionId ===
                     action.id
 
+                  const canComplete =
+                    action.status ===
+                      "open" ||
+                    action.status ===
+                      "in_progress"
+
                   return (
                     <div
                       key={
                         action.id
                       }
-                      className="rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/20"
+                      className={cn(
+                        "rounded-xl border bg-card p-4 transition-all",
+                        "hover:bg-muted/20 hover:shadow-sm",
+
+                        dueMeta.isOverdue &&
+                          "border-destructive/30 bg-destructive/[0.015]"
+                      )}
                     >
                       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
 
-                        {/* Main */}
+                        {/* ------------------------------------------------ */}
+                        {/* Main Content                                     */}
+                        {/* ------------------------------------------------ */}
 
                         <div className="flex min-w-0 flex-1 gap-3">
 
-                          <div className="pt-1">
+                          {/* Status Icon */}
+
+                          <div className="pt-0.5">
+
                             {action.status ===
                             "completed" ? (
+
                               <CheckCircle2 className="h-5 w-5 text-primary" />
+
+                            ) : action.status ===
+                              "in_progress" ? (
+
+                              <Clock3 className="h-5 w-5 text-warning" />
+
+                            ) : action.status ===
+                              "cancelled" ? (
+
+                              <Circle className="h-5 w-5 text-muted-foreground opacity-50" />
+
+                            ) : dueMeta.isOverdue ? (
+
+                              <AlertCircle className="h-5 w-5 text-destructive" />
+
                             ) : (
+
                               <Circle className="h-5 w-5 text-muted-foreground" />
+
                             )}
+
                           </div>
 
                           <div className="min-w-0 flex-1">
+
+                            {/* Title + Badges */}
 
                             <div className="flex flex-wrap items-center gap-2">
 
                               <h3
                                 className={cn(
-                                  "font-semibold",
+                                  "font-semibold text-foreground",
+
                                   action.status ===
                                     "completed" &&
-                                    "text-muted-foreground line-through"
+                                    "text-muted-foreground line-through",
+
+                                  action.status ===
+                                    "cancelled" &&
+                                    "text-muted-foreground"
                                 )}
                               >
                                 {
@@ -1112,6 +1383,7 @@ export default function ActionsPage() {
                               <span
                                 className={cn(
                                   "rounded-full px-2 py-0.5 text-xs font-medium",
+
                                   STATUS_TONES[
                                     action.status
                                   ]
@@ -1126,15 +1398,26 @@ export default function ActionsPage() {
 
                               {action.isVendorVisible ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-2 py-0.5 text-xs text-secondary">
+
                                   <Eye className="h-3 w-3" />
 
                                   Vendor visible
+
                                 </span>
                               ) : null}
+
+                              {dueMeta.isOverdue ? (
+                                <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                                  Overdue
+                                </span>
+                              ) : null}
+
                             </div>
 
+                            {/* Description */}
+
                             {action.description ? (
-                              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                                 {
                                   action.description
                                 }
@@ -1144,6 +1427,8 @@ export default function ActionsPage() {
                             {/* Metadata */}
 
                             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
+
+                              {/* Vendor */}
 
                               <Link
                                 href={`/vendors/view/${action.vendorId}`}
@@ -1163,53 +1448,109 @@ export default function ActionsPage() {
                                 }
                               </Link>
 
+                              {/* Meeting */}
+
                               <span className="inline-flex items-center gap-1">
+
                                 <CalendarDays className="h-3.5 w-3.5" />
 
                                 {
                                   action.meetingTitle
                                 }
+
                               </span>
+
+                              {/* Owner */}
 
                               {action.ownerName ? (
                                 <span className="inline-flex items-center gap-1">
+
                                   <UserRound className="h-3.5 w-3.5" />
 
                                   {
                                     action.ownerName
                                   }
+
                                 </span>
                               ) : null}
+
+                              {/* Due */}
 
                               <span
                                 className={cn(
                                   "inline-flex items-center gap-1 font-medium",
+
                                   dueMeta.className
                                 )}
                               >
-                                <Clock3 className="h-3.5 w-3.5" />
+                                {dueMeta.isOverdue ? (
+                                  <AlertCircle className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Clock3 className="h-3.5 w-3.5" />
+                                )}
 
                                 {
                                   dueMeta.label
                                 }
                               </span>
 
-                              {action.agendaItemTitle ? (
-                                <span>
-                                  Agenda:{" "}
-                                  {
-                                    action.agendaItemTitle
-                                  }
-                                </span>
-                              ) : null}
-
                             </div>
+
+                            {/* Agenda */}
+
+                            {action.agendaItemTitle ? (
+                              <div className="mt-3 text-xs text-muted-foreground">
+
+                                <span className="font-medium text-foreground">
+                                  Agenda:
+                                </span>{" "}
+
+                                {
+                                  action.agendaItemTitle
+                                }
+
+                              </div>
+                            ) : null}
+
                           </div>
+
                         </div>
 
-                        {/* Actions */}
+                        {/* ------------------------------------------------ */}
+                        {/* Row Controls                                     */}
+                        {/* ------------------------------------------------ */}
 
-                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+
+                          {/* Quick Complete */}
+
+                          {canComplete ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                updateActionStatus(
+                                  action.id,
+                                  action.meetingId,
+                                  action.vendorId,
+                                  "completed"
+                                )
+                              }
+                            >
+                              {isUpdating ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="mr-2 h-4 w-4" />
+                              )}
+
+                              Complete
+                            </Button>
+                          ) : null}
+
+                          {/* Status */}
 
                           <Select
                             value={
@@ -1231,18 +1572,23 @@ export default function ActionsPage() {
                             }
                           >
                             <SelectTrigger className="w-[150px]">
+
                               {isUpdating ? (
                                 <div className="flex items-center gap-2">
+
                                   <Loader2 className="h-4 w-4 animate-spin" />
 
                                   Updating
+
                                 </div>
                               ) : (
                                 <SelectValue />
                               )}
+
                             </SelectTrigger>
 
                             <SelectContent>
+
                               <SelectItem value="open">
                                 Open
                               </SelectItem>
@@ -1258,8 +1604,11 @@ export default function ActionsPage() {
                               <SelectItem value="cancelled">
                                 Cancelled
                               </SelectItem>
+
                             </SelectContent>
                           </Select>
+
+                          {/* Vendor */}
 
                           <Button
                             variant="outline"
@@ -1274,6 +1623,7 @@ export default function ActionsPage() {
                           </Button>
 
                         </div>
+
                       </div>
                     </div>
                   )
@@ -1283,26 +1633,45 @@ export default function ActionsPage() {
             </div>
           )}
 
-          {/* Count */}
+          {/* -------------------------------------------------------------- */}
+          {/* Result Count                                                   */}
+          {/* -------------------------------------------------------------- */}
 
           {!isLoading &&
-          actions.length > 0 ? (
-            <div className="border-t border-border pt-4 text-center text-sm text-muted-foreground">
-              Showing{" "}
-              {
-                actions.length
-              }{" "}
-              of{" "}
-              {count}{" "}
-              action item
-              {count === 1
-                ? ""
-                : "s"}
+          actions.length >
+            0 ? (
+
+            <div className="flex flex-col gap-2 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+
+              <span>
+                Showing{" "}
+                <span className="font-medium text-foreground">
+                  {
+                    actions.length
+                  }
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-foreground">
+                  {count}
+                </span>{" "}
+                action item
+                {count === 1
+                  ? ""
+                  : "s"}
+              </span>
+
+              {count > 100 ? (
+                <span className="text-xs">
+                  Additional results are available
+                </span>
+              ) : null}
+
             </div>
           ) : null}
 
         </CardContent>
       </Card>
+
     </div>
   )
 }

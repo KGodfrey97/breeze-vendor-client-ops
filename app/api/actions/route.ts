@@ -1,13 +1,24 @@
-import { NextRequest, NextResponse } from "next/server"
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server"
 
 import { query } from "@/lib/db"
 import { requireAuthenticatedProfile } from "@/lib/auth-server"
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
 type ActionStatus =
   | "open"
   | "in_progress"
   | "completed"
   | "cancelled"
+
+type ActionStatusFilter =
+  | ActionStatus
+  | "active"
 
 type ActionRow = {
   id: string
@@ -38,12 +49,43 @@ type CountRow = {
   count: string
 }
 
+type SummaryRow = {
+  active: string
+  open: string
+  in_progress: string
+  completed: string
+  cancelled: string
+  overdue: string
+  due_today: string
+  no_due_date: string
+}
+
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const ALLOWED_STATUSES = [
   "open",
   "in_progress",
   "completed",
   "cancelled",
 ] as const
+
+const ALLOWED_STATUS_FILTERS = [
+  ...ALLOWED_STATUSES,
+  "active",
+] as const
+
+const ALLOWED_DUE_FILTERS = [
+  "overdue",
+  "today",
+  "upcoming",
+  "no_due_date",
+] as const
+
+/* -------------------------------------------------------------------------- */
+/* GET                                                                        */
+/* -------------------------------------------------------------------------- */
 
 export async function GET(
   request: NextRequest
@@ -55,11 +97,19 @@ export async function GET(
     const params =
       request.nextUrl.searchParams
 
+    /* ---------------------------------------------------------------------- */
+    /* Query Parameters                                                       */
+    /* ---------------------------------------------------------------------- */
+
     const status =
-      params.get("status")
+      params.get(
+        "status"
+      )
 
     const vendorId =
-      params.get("vendorId")
+      params.get(
+        "vendorId"
+      )
 
     const search =
       params
@@ -67,28 +117,104 @@ export async function GET(
         ?.trim()
 
     const due =
-      params.get("due")
+      params.get(
+        "due"
+      )
 
-    const page = Math.max(
+    const parsedPage =
       Number(
-        params.get("page") ?? 1
-      ),
-      1
-    )
+        params.get(
+          "page"
+        ) ?? 1
+      )
 
-    const pageSize = Math.min(
-      Math.max(
-        Number(
-          params.get("pageSize") ?? 25
-        ),
-        1
-      ),
-      100
-    )
+    const parsedPageSize =
+      Number(
+        params.get(
+          "pageSize"
+        ) ?? 25
+      )
+
+    const page =
+      Number.isFinite(
+        parsedPage
+      )
+        ? Math.max(
+            Math.floor(
+              parsedPage
+            ),
+            1
+          )
+        : 1
+
+    const pageSize =
+      Number.isFinite(
+        parsedPageSize
+      )
+        ? Math.min(
+            Math.max(
+              Math.floor(
+                parsedPageSize
+              ),
+              1
+            ),
+            100
+          )
+        : 25
 
     const offset =
       (page - 1) *
       pageSize
+
+    /* ---------------------------------------------------------------------- */
+    /* Validate Status                                                        */
+    /* ---------------------------------------------------------------------- */
+
+    if (
+      status &&
+      status !== "all" &&
+      !ALLOWED_STATUS_FILTERS.includes(
+        status as ActionStatusFilter
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid action status",
+        },
+        {
+          status: 400,
+        }
+      )
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Validate Due Filter                                                    */
+    /* ---------------------------------------------------------------------- */
+
+    if (
+      due &&
+      due !== "all" &&
+      !ALLOWED_DUE_FILTERS.includes(
+        due as (
+          typeof ALLOWED_DUE_FILTERS
+        )[number]
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid due-date filter",
+        },
+        {
+          status: 400,
+        }
+      )
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Main Action Filters                                                    */
+    /* ---------------------------------------------------------------------- */
 
     const filters: string[] = [
       "ai.organization_id = $1",
@@ -102,7 +228,9 @@ export async function GET(
       sql: string,
       value: unknown
     ) => {
-      values.push(value)
+      values.push(
+        value
+      )
 
       filters.push(
         sql.replace(
@@ -112,39 +240,34 @@ export async function GET(
       )
     }
 
-    // --------------------------------------------------
-    // Status
-    // --------------------------------------------------
+    /* ---------------------------------------------------------------------- */
+    /* Status                                                                 */
+    /* ---------------------------------------------------------------------- */
 
     if (
+      status === "active"
+    ) {
+      filters.push(
+        `
+        ai.status IN (
+          'open',
+          'in_progress'
+        )
+        `
+      )
+    } else if (
       status &&
       status !== "all"
     ) {
-      if (
-        !ALLOWED_STATUSES.includes(
-          status as ActionStatus
-        )
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "Invalid action status",
-          },
-          {
-            status: 400,
-          }
-        )
-      }
-
       addFilter(
         "ai.status = ?",
         status
       )
     }
 
-    // --------------------------------------------------
-    // Vendor
-    // --------------------------------------------------
+    /* ---------------------------------------------------------------------- */
+    /* Vendor                                                                 */
+    /* ---------------------------------------------------------------------- */
 
     if (
       vendorId &&
@@ -156,11 +279,13 @@ export async function GET(
       )
     }
 
-    // --------------------------------------------------
-    // Due-date filter
-    // --------------------------------------------------
+    /* ---------------------------------------------------------------------- */
+    /* Due Date                                                               */
+    /* ---------------------------------------------------------------------- */
 
-    if (due === "overdue") {
+    if (
+      due === "overdue"
+    ) {
       filters.push(
         `
         ai.due_date IS NOT NULL
@@ -173,7 +298,9 @@ export async function GET(
       )
     }
 
-    if (due === "today") {
+    if (
+      due === "today"
+    ) {
       filters.push(
         `
         ai.due_date = CURRENT_DATE
@@ -185,7 +312,9 @@ export async function GET(
       )
     }
 
-    if (due === "upcoming") {
+    if (
+      due === "upcoming"
+    ) {
       filters.push(
         `
         ai.due_date > CURRENT_DATE
@@ -197,15 +326,24 @@ export async function GET(
       )
     }
 
-    if (due === "no_due_date") {
+    if (
+      due ===
+      "no_due_date"
+    ) {
       filters.push(
-        "ai.due_date IS NULL"
+        `
+        ai.due_date IS NULL
+        AND ai.status IN (
+          'open',
+          'in_progress'
+        )
+        `
       )
     }
 
-    // --------------------------------------------------
-    // Search
-    // --------------------------------------------------
+    /* ---------------------------------------------------------------------- */
+    /* Search                                                                 */
+    /* ---------------------------------------------------------------------- */
 
     if (search) {
       values.push(
@@ -233,14 +371,101 @@ export async function GET(
         " AND "
       )
 
-    // --------------------------------------------------
-    // Fetch actions
-    // --------------------------------------------------
+    /* ---------------------------------------------------------------------- */
+    /* Summary Filters                                                        */
+    /* ---------------------------------------------------------------------- */
+
+    /*
+     * Summary cards intentionally ignore:
+     *
+     * - status
+     * - due
+     *
+     * But they DO respect:
+     *
+     * - organization
+     * - vendor
+     * - search
+     *
+     * This keeps Overdue / Due Today / etc.
+     * stable when the user clicks one of those
+     * summary cards, while still making the
+     * summary relevant to vendor/search context.
+     */
+
+    const summaryFilters: string[] = [
+      "ai.organization_id = $1",
+    ]
+
+    const summaryValues: unknown[] = [
+      profile.organization_id,
+    ]
+
+    const addSummaryFilter = (
+      sql: string,
+      value: unknown
+    ) => {
+      summaryValues.push(
+        value
+      )
+
+      summaryFilters.push(
+        sql.replace(
+          "?",
+          `$${summaryValues.length}`
+        )
+      )
+    }
+
+    if (
+      vendorId &&
+      vendorId !== "all"
+    ) {
+      addSummaryFilter(
+        "ai_meeting.vendor_id = ?",
+        vendorId
+      )
+    }
+
+    if (search) {
+      summaryValues.push(
+        `%${search}%`
+      )
+
+      const searchParam =
+        `$${summaryValues.length}`
+
+      summaryFilters.push(
+        `
+        (
+          ai.title ILIKE ${searchParam}
+          OR ai.description ILIKE ${searchParam}
+          OR ai.owner_name ILIKE ${searchParam}
+          OR v.name ILIKE ${searchParam}
+          OR ai_meeting.title ILIKE ${searchParam}
+        )
+        `
+      )
+    }
+
+    const summaryWhere =
+      summaryFilters.join(
+        " AND "
+      )
+
+    /* ---------------------------------------------------------------------- */
+    /* Queries                                                                */
+    /* ---------------------------------------------------------------------- */
 
     const [
       actionsResult,
       countResult,
+      summaryResult,
     ] = await Promise.all([
+      /* -------------------------------------------------------------------- */
+      /* Actions                                                              */
+      /* -------------------------------------------------------------------- */
+
       query<ActionRow>(
         `
         SELECT
@@ -294,7 +519,6 @@ export async function GET(
         WHERE ${where}
 
         ORDER BY
-
           CASE
             WHEN ai.status IN (
               'open',
@@ -334,6 +558,10 @@ export async function GET(
         ]
       ),
 
+      /* -------------------------------------------------------------------- */
+      /* Filtered Result Count                                                */
+      /* -------------------------------------------------------------------- */
+
       query<CountRow>(
         `
         SELECT
@@ -364,7 +592,108 @@ export async function GET(
         `,
         values
       ),
+
+      /* -------------------------------------------------------------------- */
+      /* Summary                                                              */
+      /* -------------------------------------------------------------------- */
+
+      query<SummaryRow>(
+        `
+        SELECT
+          COUNT(*) FILTER (
+            WHERE ai.status IN (
+              'open',
+              'in_progress'
+            )
+          )::text
+            AS active,
+
+          COUNT(*) FILTER (
+            WHERE ai.status =
+              'open'
+          )::text
+            AS open,
+
+          COUNT(*) FILTER (
+            WHERE ai.status =
+              'in_progress'
+          )::text
+            AS in_progress,
+
+          COUNT(*) FILTER (
+            WHERE ai.status =
+              'completed'
+          )::text
+            AS completed,
+
+          COUNT(*) FILTER (
+            WHERE ai.status =
+              'cancelled'
+          )::text
+            AS cancelled,
+
+          COUNT(*) FILTER (
+            WHERE
+              ai.status IN (
+                'open',
+                'in_progress'
+              )
+              AND ai.due_date IS NOT NULL
+              AND ai.due_date <
+                CURRENT_DATE
+          )::text
+            AS overdue,
+
+          COUNT(*) FILTER (
+            WHERE
+              ai.status IN (
+                'open',
+                'in_progress'
+              )
+              AND ai.due_date =
+                CURRENT_DATE
+          )::text
+            AS due_today,
+
+          COUNT(*) FILTER (
+            WHERE
+              ai.status IN (
+                'open',
+                'in_progress'
+              )
+              AND ai.due_date IS NULL
+          )::text
+            AS no_due_date
+
+        FROM vendor_meeting_action_items ai
+
+        JOIN vendor_meetings ai_meeting
+          ON ai_meeting.id =
+            ai.meeting_id
+          AND ai_meeting.organization_id =
+            ai.organization_id
+
+        JOIN vendors v
+          ON v.id =
+            ai_meeting.vendor_id
+          AND v.organization_id =
+            ai.organization_id
+
+        LEFT JOIN vendor_meeting_agenda_items agenda
+          ON agenda.id =
+            ai.agenda_item_id
+          AND agenda.organization_id =
+            ai.organization_id
+
+        WHERE ${summaryWhere}
+        `,
+        summaryValues
+      ),
     ])
+
+    /* ---------------------------------------------------------------------- */
+    /* Map Actions                                                            */
+    /* ---------------------------------------------------------------------- */
 
     const actions =
       actionsResult.rows.map(
@@ -422,13 +751,96 @@ export async function GET(
         })
       )
 
+    /* ---------------------------------------------------------------------- */
+    /* Map Summary                                                            */
+    /* ---------------------------------------------------------------------- */
+
+    const summaryRow =
+      summaryResult.rows[0]
+
+    const summary = {
+      active:
+        Number(
+          summaryRow?.active ??
+            0
+        ),
+
+      open:
+        Number(
+          summaryRow?.open ??
+            0
+        ),
+
+      inProgress:
+        Number(
+          summaryRow?.in_progress ??
+            0
+        ),
+
+      completed:
+        Number(
+          summaryRow?.completed ??
+            0
+        ),
+
+      cancelled:
+        Number(
+          summaryRow?.cancelled ??
+            0
+        ),
+
+      overdue:
+        Number(
+          summaryRow?.overdue ??
+            0
+        ),
+
+      dueToday:
+        Number(
+          summaryRow?.due_today ??
+            0
+        ),
+
+      noDueDate:
+        Number(
+          summaryRow?.no_due_date ??
+            0
+        ),
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Response                                                               */
+    /* ---------------------------------------------------------------------- */
+
     return NextResponse.json({
       actions,
 
-      count: Number(
-        countResult.rows[0]
-          ?.count ?? 0
-      ),
+      count:
+        Number(
+          countResult.rows[0]
+            ?.count ?? 0
+        ),
+
+      summary,
+
+      pagination: {
+        page,
+        pageSize,
+
+        totalPages:
+          Math.max(
+            1,
+            Math.ceil(
+              Number(
+                countResult
+                  .rows[0]
+                  ?.count ??
+                  0
+              ) /
+                pageSize
+            )
+          ),
+      },
     })
   } catch (error) {
     console.error(
