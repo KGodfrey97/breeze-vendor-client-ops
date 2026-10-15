@@ -750,36 +750,6 @@ export default function AnalyticsPage() {
       {/* Header                                                         */}
       {/* -------------------------------------------------------------- */}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Analyze KPI and SLA
-            performance across your
-            vendors.
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            void loadAnalytics()
-          }
-          disabled={
-            isLoading
-          }
-        >
-          <RefreshCw
-            className={`mr-2 h-4 w-4 ${
-              isLoading
-                ? "animate-spin"
-                : ""
-            }`}
-          />
-
-          Refresh
-        </Button>
-      </div>
 
       {/* -------------------------------------------------------------- */}
       {/* Filters                                                        */}
@@ -980,12 +950,9 @@ export default function AnalyticsPage() {
               </span>
 
               <span className="font-medium">
-                {initialView ===
-                "coverage"
+                {searchParams.get("view") === "coverage"
                   ? "Measurement Coverage"
-                  : formatStatus(
-                      initialStatus
-                    )}
+                  : formatStatus(getValidStatus(searchParams.get("status")))}
               </span>
             </div>
           )}
