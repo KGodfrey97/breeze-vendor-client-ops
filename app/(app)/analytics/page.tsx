@@ -15,6 +15,9 @@ import {
   BarChart3,
   CheckCircle2,
   ChevronRight,
+  Download,
+  Search,
+  ArrowUpDown,
   CircleDashed,
   Filter,
   Gauge,
@@ -51,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -108,6 +112,11 @@ type AnalyticsMetric = {
   period:
     | string
     | null
+
+  targetValue: number
+  actualValue: number | null
+  unit: string
+  comparisonOperator: string
 }
 
 type AnalyticsVendor = {
@@ -227,11 +236,6 @@ export default function AnalyticsPage() {
     searchParams.get(
       "lineOfBusinessId"
     ) || "all"
-
-  const initialView =
-    searchParams.get(
-      "view"
-    )
 
   /* ------------------------------------------------------------------------ */
   /* State                                                                    */
@@ -741,17 +745,13 @@ export default function AnalyticsPage() {
   /* ------------------------------------------------------------------------ */
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="app-page space-y-6">
       {/* -------------------------------------------------------------- */}
       {/* Header                                                         */}
       {/* -------------------------------------------------------------- */}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Analytics
-          </h1>
-
           <p className="mt-1 text-sm text-muted-foreground">
             Analyze KPI and SLA
             performance across your
@@ -971,10 +971,7 @@ export default function AnalyticsPage() {
 
           {/* Dashboard Drill-down */}
 
-          {(initialStatus !==
-            "all" ||
-            initialView ===
-              "coverage") && (
+          {(searchParams.get("view") === "coverage" || searchParams.has("status")) && (
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
               <Filter className="h-4 w-4 text-muted-foreground" />
 
@@ -1375,9 +1372,9 @@ function SummaryCard({
         onClick={
           onClick
         }
-        className={`rounded-xl border bg-card p-5 text-left shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        className={`rounded-xl border bg-card p-5 text-left shadow-sm transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           active
-            ? "ring-2 ring-primary/30"
+            ? "border-primary/40 bg-primary/5 ring-2 ring-primary/20"
             : ""
         }`}
       >
@@ -1534,7 +1531,6 @@ function ComplianceTrendChart({
             activeDot={{
               r: 5,
             }}
-            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>
@@ -1557,6 +1553,8 @@ function VendorPerformanceChart({
     vendorId: string
   ) => void
 }) {
+  const [ranking, setRanking] = useState<"lowest" | "highest">("lowest")
+
   const chartData =
     useMemo(
       () =>
@@ -1571,18 +1569,15 @@ function VendorPerformanceChart({
               a,
               b
             ) =>
-              (a.complianceRate ??
-                0) -
-              (b.complianceRate ??
-                0)
+              ranking === "lowest"
+                ? (a.complianceRate ?? 0) - (b.complianceRate ?? 0)
+                : (b.complianceRate ?? 0) - (a.complianceRate ?? 0)
           )
           .slice(
             0,
             10
           ),
-      [
-        data,
-      ]
+      [data, ranking]
     )
 
   if (
@@ -1597,7 +1592,17 @@ function VendorPerformanceChart({
   }
 
   return (
-    <div className="h-[300px] w-full">
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <Select value={ranking} onValueChange={(value) => setRanking(value as "lowest" | "highest")}>
+          <SelectTrigger className="h-8 w-[190px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lowest">Lowest performing</SelectItem>
+            <SelectItem value="highest">Highest performing</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="h-[260px] w-full">
       <ResponsiveContainer
         width="100%"
         height="100%"
@@ -1780,6 +1785,7 @@ function VendorPerformanceChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }
@@ -1799,6 +1805,53 @@ function MetricResultsTable({
     vendorId: string
   ) => void
 }) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [sortBy, setSortBy] = useState<"vendor" | "metric" | "status">("vendor")
+  const [sortDescending, setSortDescending] = useState(false)
+  const [page, setPage] = useState(1)
+  const pageSize = 25
+
+  const filteredMetrics = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    const items = metrics.filter((metric) =>
+      !term || [metric.vendorName, metric.metricName, metric.lineOfBusinessName ?? "", metric.metricType]
+        .some((value) => value.toLowerCase().includes(term))
+    )
+    items.sort((a, b) => {
+      const key = sortBy === "vendor" ? "vendorName" : sortBy === "metric" ? "metricName" : "status"
+      const result = a[key].localeCompare(b[key])
+      return sortDescending ? -result : result
+    })
+    return items
+  }, [metrics, searchTerm, sortBy, sortDescending])
+
+  const totalPages = Math.max(1, Math.ceil(filteredMetrics.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const visibleMetrics = filteredMetrics.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  const toggleSort = (column: "vendor" | "metric" | "status") => {
+    if (sortBy === column) setSortDescending((value) => !value)
+    else { setSortBy(column); setSortDescending(false) }
+    setPage(1)
+  }
+
+  const exportCsv = () => {
+    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
+    const rows = [
+      ["Vendor", "Line of Business", "Metric", "Type", "Target", "Actual", "Status", "Period"],
+      ...filteredMetrics.map((m) => [m.vendorName, m.lineOfBusinessName, m.metricName, m.metricType, m.target, m.actual, m.status, m.period]),
+    ]
+    const csv = "\uFEFF" + rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n")
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "breeze-analytics-metrics.csv"
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   if (
     metrics.length ===
     0
@@ -1820,18 +1873,24 @@ function MetricResultsTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Search vendors or metrics..." value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); setPage(1) }} />
+        </div>
+        <Button variant="outline" size="sm" onClick={exportCsv} disabled={filteredMetrics.length === 0}>
+          <Download className="mr-2 h-4 w-4" />Export CSV
+        </Button>
+      </div>
+      <div className="overflow-hidden rounded-lg border">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr className="border-b">
-              <TableHeader>
-                Vendor
-              </TableHeader>
+              <TableHeader><button type="button" onClick={() => toggleSort("vendor")} className="inline-flex items-center gap-1 hover:text-foreground">Vendor <ArrowUpDown className="h-3 w-3" /></button></TableHeader>
 
-              <TableHeader>
-                Metric
-              </TableHeader>
+              <TableHeader><button type="button" onClick={() => toggleSort("metric")} className="inline-flex items-center gap-1 hover:text-foreground">Metric <ArrowUpDown className="h-3 w-3" /></button></TableHeader>
 
               <TableHeader>
                 Type
@@ -1845,9 +1904,7 @@ function MetricResultsTable({
                 Actual
               </TableHeader>
 
-              <TableHeader>
-                Status
-              </TableHeader>
+              <TableHeader><button type="button" onClick={() => toggleSort("status")} className="inline-flex items-center gap-1 hover:text-foreground">Status <ArrowUpDown className="h-3 w-3" /></button></TableHeader>
 
               <TableHeader>
                 Period
@@ -1862,7 +1919,7 @@ function MetricResultsTable({
           </thead>
 
           <tbody>
-            {metrics.map(
+            {visibleMetrics.map(
               (metric) => (
                 <tr
                   key={
@@ -1953,6 +2010,15 @@ function MetricResultsTable({
             )}
           </tbody>
         </table>
+      </div>
+      </div>
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>{filteredMetrics.length === 0 ? "No matching metrics" : `Showing ${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filteredMetrics.length)} of ${filteredMetrics.length}`}</span>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>Previous</Button>
+          <span>Page {safePage} of {totalPages}</span>
+          <Button size="sm" variant="outline" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next</Button>
+        </div>
       </div>
     </div>
   )

@@ -969,10 +969,7 @@ export async function GET(
         )
 
         SELECT
-          COALESCE(
-            latest.id,
-            fm.id
-          ) AS id,
+          fm.id AS id,
 
           fm.vendor_id,
 
@@ -1319,6 +1316,11 @@ export async function GET(
                 row.actual_value,
                 row.unit
               ),
+
+            targetValue: Number(row.target_value),
+            actualValue: row.actual_value === null ? null : Number(row.actual_value),
+            unit: row.unit,
+            comparisonOperator: row.comparison_operator,
 
             status:
               resultStatus,
