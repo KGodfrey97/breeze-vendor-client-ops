@@ -730,15 +730,6 @@ export default function MeetingsPage() {
   return (
     <>
       <div className="app-page space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">Manage vendor meetings across your organization.</p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isLoading}>
-              <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh
-            </Button>
-            <Button size="sm" onClick={openNewMeeting}><Plus className="mr-2 h-4 w-4" />New Meeting</Button>
-          </div>
-        </div>
 
         {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert>}
 
