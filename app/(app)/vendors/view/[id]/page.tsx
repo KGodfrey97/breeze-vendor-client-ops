@@ -30,6 +30,9 @@ import { VendorHealth } from "@/components/vendor-health"
 import { VendorMeetings } from "@/components/vendor-meetings"
 import { VendorRelationshipRatings } from "@/components/vendor-relationship-ratings"
 
+import { TestReportUpload } from "@/components/vendor-reports/test-report-upload"
+
+
 export default function VendorDetailsPage() {
   const params = useParams()
 
@@ -322,6 +325,7 @@ export default function VendorDetailsPage() {
             <TabsTrigger value="meetings">Meetings</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="health">Health & Ratings</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-0">
@@ -667,6 +671,11 @@ export default function VendorDetailsPage() {
               />
             </div>
           </TabsContent>
+
+          <TabsContent value="reports" className="mt-0">
+            <TestReportUpload/>
+          </TabsContent>
+          
         </Tabs>
       </div>
     </div>
