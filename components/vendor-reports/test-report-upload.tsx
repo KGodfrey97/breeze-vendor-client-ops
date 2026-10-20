@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 
-export default function TestReportUpload() {
+export function TestReportUpload() {
   const [vendorId, setVendorId] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [message, setMessage] = useState("")

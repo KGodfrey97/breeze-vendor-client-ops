@@ -23,6 +23,7 @@ import {
   CalendarDays,
   Building2,
   ListChecks,
+  FileBarChart2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SidebarHeader, SidebarProvider } from "@/components/ui/sidebar"
@@ -130,6 +131,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       title: "Analytics",
       href: "/analytics",
       icon: PieChart,
+    },
+    {
+      title: "Reports",
+      href: "/reports",
+      icon: FileBarChart2,
     },
     {
       title: "Support",
